@@ -202,6 +202,20 @@ await fs.mkdir(new URL('./prices/', OUT), { recursive: true });
 
 const stores = [];
 const report = { builtAt: new Date().toISOString(), chains: {} };
+// Every product once (by barcode), with its price in each branch: catalog.json.
+const catalog = new Map();
+
+function addToCatalog(items) {
+  const storeIndex = stores.length - 1;
+  for (const [code, name, , price, , , , weighted] of items) {
+    let product = catalog.get(code);
+    if (!product) {
+      product = [name, weighted, []];
+      catalog.set(code, product);
+    }
+    product[2].push(storeIndex, price);
+  }
+}
 
 for (const chain of config.chains) {
   console.log(`\n${chain.name} (${chain.key})`);
@@ -244,6 +258,7 @@ for (const chain of config.chains) {
         const { items, file } = await source.prices(branch);
         await fs.writeFile(new URL(`./prices/${id}.json`, OUT), JSON.stringify(items));
         stores.push({ ...entry, products: items.length, sourceFile: file, pricesFrom: report.builtAt });
+        addToCatalog(items);
         console.log(`  ✓ ${branch.name}: ${items.length} products`);
       } catch (error) {
         // No fresh file tonight: keep the last prices we had for this branch, if any.
@@ -255,6 +270,7 @@ for (const chain of config.chains) {
           await fs.writeFile(new URL(`./prices/${id}.json`, OUT), lastFile);
           const { products, sourceFile, pricesFrom } = last;
           stores.push({ ...entry, products, sourceFile, pricesFrom });
+          addToCatalog(JSON.parse(lastFile.toString()));
           chainReport.errors.push(`${branch.name}: ${error.message} (kept prices from ${pricesFrom})`);
         } else {
           chainReport.errors.push(`${branch.name}: ${error.message}`);
@@ -273,6 +289,12 @@ for (const chain of config.chains) {
 await fs.writeFile(
   new URL('./stores.json', OUT),
   JSON.stringify({ builtAt: report.builtAt, cities: config.cities.map((c) => c.name), stores }, null, 1)
+);
+// The app's price estimates: [name, by weight (1/0), [branch index, price, branch index, price…]],
+// branch index = place in stores.json's "stores".
+await fs.writeFile(
+  new URL('./catalog.json', OUT),
+  JSON.stringify({ builtAt: report.builtAt, products: [...catalog.values()] })
 );
 await fs.writeFile(new URL('./report.json', OUT), JSON.stringify(report, null, 1));
 console.log(`\nDone: ${stores.length} branches with prices.`);
