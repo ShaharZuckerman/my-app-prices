@@ -38,7 +38,8 @@
       "chainId": "7290526500006",
       "source": "cerberus",
       "username": "SalachD",
-      "password": "12345"
+      "password": "12345",
+      "branches": { "7": "עין המפרץ", "19": "חיפה" }
     }
   ]
 }

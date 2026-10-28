@@ -73,8 +73,8 @@ function cityOf(store) {
     const name = normalizeCity(chosen.name);
     if (city === name || chosen.codes.includes(text(store.city))) return chosen.name;
   }
-  // No usable city field (empty, or a code we don't know): look in the name and address.
-  if (city && !/^\d+$/.test(city)) return null;
+  // No city at all (empty, or code 0): look in the name and address.
+  if (city && !/^0+$/.test(city)) return null;
   const words = normalizeCity(`${store.name} ${store.address}`);
   return config.cities.find((chosen) => words.includes(normalizeCity(chosen.name)))?.name ?? null;
 }
@@ -175,8 +175,9 @@ async function cerberus(chain) {
       return readStores(toText(await fetchFile(name)));
     },
     async prices(store) {
-      // e.g. PriceFull7290058140886-001-202610280300.gz (the branch number may have zeros in front).
-      const pattern = new RegExp(`^PriceFull${chain.chainId}-0*${store.storeId}-`);
+      // e.g. PriceFull7290058140886-001-015-20261028-060951.gz: chain, sub-chain (001),
+      // branch (zeros in front), date. Some chains leave out the sub-chain.
+      const pattern = new RegExp(`^PriceFull${chain.chainId}(?:-\\d+)?-0*${store.storeId}-\\d{8}`);
       const name = names.filter((each) => pattern.test(each)).sort().at(-1);
       if (!name) throw new Error(`no full price file for branch ${store.storeId}`);
       return { items: readPrices(toText(await fetchFile(name))), file: name };
@@ -188,6 +189,13 @@ async function cerberus(chain) {
 }
 
 // ---- Putting it together --------------------------------------------------
+
+// Last night's files (the workflow puts the data branch in ./previous), for branches
+// without a fresh price file tonight.
+const PREVIOUS = new URL('./previous/', import.meta.url);
+const previous = JSON.parse(
+  await fs.readFile(new URL('./stores.json', PREVIOUS), 'utf8').catch(() => '{"stores":[]}')
+);
 
 await fs.rm(OUT, { recursive: true, force: true });
 await fs.mkdir(new URL('./prices/', OUT), { recursive: true });
@@ -208,7 +216,9 @@ for (const chain of config.chains) {
       const seen = branch.city || '(none)';
       chainReport.citiesSeen[seen] = (chainReport.citiesSeen[seen] ?? 0) + 1;
     }
-    const kept = branches.filter((branch) => cityOf(branch));
+    // In a chosen city, or added by hand in config.json ("branches").
+    const extra = chain.branches ?? {};
+    const kept = branches.filter((branch) => cityOf(branch) || extra[branch.storeId]);
     chainReport.kept = kept.length;
     chainReport.files = chain.fileSample;
     // Branches whose city is unknown (code 0 or empty): their names and addresses, to match by hand.
@@ -220,24 +230,35 @@ for (const chain of config.chains) {
 
     for (const branch of kept) {
       const id = `${chain.key}-${branch.storeId}`;
+      const entry = {
+        id,
+        chain: chain.key,
+        chainName: chain.name,
+        subChain: branch.subChain,
+        storeId: branch.storeId,
+        name: branch.name,
+        city: cityOf(branch) ?? extra[branch.storeId],
+        address: branch.address,
+      };
       try {
         const { items, file } = await source.prices(branch);
         await fs.writeFile(new URL(`./prices/${id}.json`, OUT), JSON.stringify(items));
-        stores.push({
-          id,
-          chain: chain.key,
-          chainName: chain.name,
-          subChain: branch.subChain,
-          storeId: branch.storeId,
-          name: branch.name,
-          city: cityOf(branch),
-          address: branch.address,
-          products: items.length,
-          sourceFile: file,
-        });
+        stores.push({ ...entry, products: items.length, sourceFile: file, pricesFrom: report.builtAt });
         console.log(`  ✓ ${branch.name}: ${items.length} products`);
       } catch (error) {
-        chainReport.errors.push(`${branch.name}: ${error.message}`);
+        // No fresh file tonight: keep the last prices we had for this branch, if any.
+        const last = previous.stores.find((store) => store.id === id);
+        const lastFile = await fs
+          .readFile(new URL(`./prices/${id}.json`, PREVIOUS))
+          .catch(() => null);
+        if (last && lastFile) {
+          await fs.writeFile(new URL(`./prices/${id}.json`, OUT), lastFile);
+          const { products, sourceFile, pricesFrom } = last;
+          stores.push({ ...entry, products, sourceFile, pricesFrom });
+          chainReport.errors.push(`${branch.name}: ${error.message} (kept prices from ${pricesFrom})`);
+        } else {
+          chainReport.errors.push(`${branch.name}: ${error.message}`);
+        }
         console.log(`  ✗ ${branch.name}: ${error.message}`);
       }
     }

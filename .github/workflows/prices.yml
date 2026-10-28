@@ -23,6 +23,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # Last night's files, for branches without a fresh price file tonight
+      # (there's none before the first run).
+      - uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          ref: data
+          path: previous
       - run: npm ci
       - run: node build.mjs
       # Only the newest files are kept: the data branch is replaced each night.

@@ -22,5 +22,7 @@ The app reads `stores.json` and the files in `prices/` from the `data` branch.
 
 ## Changing the cities or chains
 
-Edit `config.json` (city names in Hebrew, with their official city codes), then
+Edit `config.json` (city names in Hebrew, with their official city codes). A chain
+whose branches have no city (code 0) can list branches by number instead, in its
+`"branches"` (branch number → city). Then
 on GitHub: **Actions → Prices → Run workflow**, or wait for the next night.
