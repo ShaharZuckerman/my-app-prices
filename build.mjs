@@ -151,6 +151,12 @@ async function cerberus(chain) {
   });
   const names = (await client.list('/')).map((file) => file.name);
   console.log(`  ${names.length} files on the server`);
+  // For report.json: what the files are called (to see why a branch's file isn't found).
+  chain.fileSample = {
+    total: names.length,
+    priceFull: names.filter((name) => /^PriceFull/i.test(name)).length,
+    examples: [...names].sort().filter((_, index, all) => index % Math.ceil(all.length / 25) === 0),
+  };
 
   // File names end with the time they were made, so the last one (sorted) is the newest.
   const newest = (prefix) => names.filter((name) => name.startsWith(prefix)).sort().at(-1);
@@ -204,6 +210,12 @@ for (const chain of config.chains) {
     }
     const kept = branches.filter((branch) => cityOf(branch));
     chainReport.kept = kept.length;
+    chainReport.files = chain.fileSample;
+    // Branches whose city is unknown (code 0 or empty): their names and addresses, to match by hand.
+    chainReport.unknownCity = branches
+      .filter((branch) => !branch.city || /^0+$/.test(branch.city))
+      .map((branch) => `${branch.storeId} · ${branch.name} · ${branch.address}`);
+    chainReport.keptBranches = kept.map((branch) => `${branch.storeId} · ${branch.name}`);
     console.log(`  ${branches.length} branches, ${kept.length} in the chosen cities`);
 
     for (const branch of kept) {
