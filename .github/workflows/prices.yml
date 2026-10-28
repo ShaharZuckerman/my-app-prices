@@ -1,0 +1,37 @@
+# Every night: build the price files (build.mjs) and publish them on the
+# "data" branch, which the app reads. It also runs after each change on main,
+# and "Run workflow" on GitHub starts it by hand.
+name: Prices
+
+on:
+  schedule:
+    # 02:30 UTC = 04:30/05:30 in Israel, after the chains publish their nightly files.
+    - cron: '30 2 * * *'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node build.mjs
+      # Only the newest files are kept: the data branch is replaced each night.
+      - name: Publish to the data branch
+        run: |
+          cd out
+          git init -q -b data
+          git config user.name "price-bot"
+          git config user.email "price-bot@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Prices of $(date -u +%F)"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" data

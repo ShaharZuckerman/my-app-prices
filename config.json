@@ -1,0 +1,44 @@
+{
+  "cities": [
+    { "name": "חיפה", "codes": ["4000"] },
+    { "name": "קרית אתא", "codes": ["6800"] },
+    { "name": "נשר", "codes": ["2500"] },
+    { "name": "טירת כרמל", "codes": ["2100"] },
+    { "name": "קרית ביאליק", "codes": ["9500"] },
+    { "name": "קרית מוצקין", "codes": ["8200"] },
+    { "name": "קרית ים", "codes": ["9600"] },
+    { "name": "קרית חיים", "codes": [] }
+  ],
+  "chains": [
+    {
+      "key": "shufersal",
+      "name": "שופרסל",
+      "chainId": "7290027600007",
+      "source": "shufersal"
+    },
+    {
+      "key": "rami-levy",
+      "name": "רמי לוי",
+      "chainId": "7290058140886",
+      "source": "cerberus",
+      "username": "RamiLevi",
+      "password": ""
+    },
+    {
+      "key": "osher-ad",
+      "name": "אושר עד",
+      "chainId": "7290103152017",
+      "source": "cerberus",
+      "username": "osherad",
+      "password": ""
+    },
+    {
+      "key": "salach-dabach",
+      "name": "סאלח דבאח",
+      "chainId": "7290526500006",
+      "source": "cerberus",
+      "username": "SalachD",
+      "password": "12345"
+    }
+  ]
+}

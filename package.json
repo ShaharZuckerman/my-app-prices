@@ -1,0 +1,14 @@
+{
+  "name": "my-app-prices",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Nightly grocery prices for the Grocery List app, from the chains' public price files.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "basic-ftp": "^6.2.3",
+    "fast-xml-parser": "^5.11.2"
+  }
+}
