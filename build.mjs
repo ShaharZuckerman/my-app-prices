@@ -210,7 +210,7 @@ function addToCatalog(items) {
   for (const [code, name, , price, , , , weighted] of items) {
     let product = catalog.get(code);
     if (!product) {
-      product = [name, weighted, []];
+      product = [name, weighted, [], code];
       catalog.set(code, product);
     }
     product[2].push(storeIndex, price);
@@ -290,8 +290,9 @@ await fs.writeFile(
   new URL('./stores.json', OUT),
   JSON.stringify({ builtAt: report.builtAt, cities: config.cities.map((c) => c.name), stores }, null, 1)
 );
-// The app's price estimates: [name, by weight (1/0), [branch index, price, branch index, price…]],
-// branch index = place in stores.json's "stores".
+// The app's price estimates:
+// [name, by weight (1/0), [branch index, price, branch index, price…], barcode],
+// branch index = place in stores.json's "stores". The barcode finds products on receipts.
 await fs.writeFile(
   new URL('./catalog.json', OUT),
   JSON.stringify({ builtAt: report.builtAt, products: [...catalog.values()] })
