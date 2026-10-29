@@ -208,15 +208,33 @@ async function findOnMap(query) {
 }
 
 /**
- * A branch's coordinates: kept from last night if known, otherwise looked up by
- * its address, or by its city when the address isn't found ("near" = city center).
+ * An address the way the map understands it: "רח' גוט לוין 48" → "גוט לוין 48",
+ * "שד.אח"י אילת 20" → "שדרות אח"י אילת 20".
+ */
+function cleanAddress(address) {
+  return address
+    .replace(/^\s*(רח['׳.]?|רחוב)\s*/, '')
+    .replace(/^\s*(שד['׳.]|שדרות)\s*/, 'שדרות ')
+    .replace(/^\s*ד\.\s*/, 'דרך ')
+    .replace(/\./g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * A branch's coordinates: kept from last night if found by address, otherwise
+ * looked up by its address (as written, then cleaned up), or by its city when
+ * the address isn't found (located: 'city' = the city center; tried again next night).
  */
 async function locate(entry) {
   const last = previous.stores.find((store) => store.id === entry.id);
-  if (last?.lat) return { lat: last.lat, lng: last.lng, located: last.located };
+  if (last?.located === 'address') return { lat: last.lat, lng: last.lng, located: 'address' };
   const address = entry.address && !/unknown/i.test(entry.address) ? entry.address : '';
-  const exact = address ? await findOnMap(`${address}, ${entry.city}`) : null;
-  if (exact) return { ...exact, located: 'address' };
+  const tries = [...new Set([address, cleanAddress(address)])].filter(Boolean);
+  for (const each of tries) {
+    const exact = await findOnMap(`${each}, ${entry.city}`);
+    if (exact) return { ...exact, located: 'address' };
+  }
   const city = await findOnMap(entry.city);
   return city ? { ...city, located: 'city' } : {};
 }
