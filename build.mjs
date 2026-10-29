@@ -188,6 +188,39 @@ async function cerberus(chain) {
   };
 }
 
+// ---- Where each branch is (for "stores near me" in the app) -------------------
+
+// OpenStreetMap's free address search: at most one question a second, and a
+// name for who's asking (their rules).
+const MapSearch = 'https://nominatim.openstreetmap.org/search';
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** A place's coordinates from OpenStreetMap, or null if it isn't found. */
+async function findOnMap(query) {
+  await pause(1100);
+  const url = `${MapSearch}?format=json&limit=1&countrycodes=il&q=${encodeURIComponent(query)}`;
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'my-app-prices (github.com/ShaharZuckerman/my-app-prices)' },
+  });
+  if (!response.ok) return null;
+  const [place] = await response.json();
+  return place ? { lat: +(+place.lat).toFixed(5), lng: +(+place.lon).toFixed(5) } : null;
+}
+
+/**
+ * A branch's coordinates: kept from last night if known, otherwise looked up by
+ * its address, or by its city when the address isn't found ("near" = city center).
+ */
+async function locate(entry) {
+  const last = previous.stores.find((store) => store.id === entry.id);
+  if (last?.lat) return { lat: last.lat, lng: last.lng, located: last.located };
+  const address = entry.address && !/unknown/i.test(entry.address) ? entry.address : '';
+  const exact = address ? await findOnMap(`${address}, ${entry.city}`) : null;
+  if (exact) return { ...exact, located: 'address' };
+  const city = await findOnMap(entry.city);
+  return city ? { ...city, located: 'city' } : {};
+}
+
 // ---- Putting it together --------------------------------------------------
 
 // Last night's files (the workflow puts the data branch in ./previous), for branches
@@ -254,6 +287,7 @@ for (const chain of config.chains) {
         city: cityOf(branch) ?? extra[branch.storeId],
         address: branch.address,
       };
+      Object.assign(entry, await locate(entry).catch(() => ({})));
       try {
         const { items, file } = await source.prices(branch);
         await fs.writeFile(new URL(`./prices/${id}.json`, OUT), JSON.stringify(items));
