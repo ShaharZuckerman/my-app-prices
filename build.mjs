@@ -622,6 +622,16 @@ function addToCatalog(items) {
   }
 }
 
+/** A branch with its prices from last time (if there are any): when they're from, else null. */
+async function keepLastPrices(branch) {
+  const lastFile = await fs.readFile(new URL(`./prices/${branch.id}.json`, PREVIOUS)).catch(() => null);
+  if (!lastFile) return null;
+  await fs.writeFile(new URL(`./prices/${branch.id}.json`, OUT), lastFile);
+  stores.push(branch);
+  addToCatalog(JSON.parse(lastFile.toString()));
+  return branch.pricesFrom;
+}
+
 for (const chain of config.chains) {
   console.log(`\n${chain.name} (${chain.key})`);
   const chainReport = { branches: 0, kept: 0, citiesSeen: {}, errors: [] };
@@ -669,24 +679,30 @@ for (const chain of config.chains) {
       } catch (error) {
         // No fresh file tonight: keep the last prices we had for this branch, if any.
         const last = previous.stores.find((store) => store.id === id);
-        const lastFile = await fs
-          .readFile(new URL(`./prices/${id}.json`, PREVIOUS))
-          .catch(() => null);
-        if (last && lastFile) {
-          await fs.writeFile(new URL(`./prices/${id}.json`, OUT), lastFile);
-          const { products, sourceFile, pricesFrom } = last;
-          stores.push({ ...entry, products, sourceFile, pricesFrom });
-          addToCatalog(JSON.parse(lastFile.toString()));
-          chainReport.errors.push(`${branch.name}: ${error.message} (kept prices from ${pricesFrom})`);
-        } else {
-          chainReport.errors.push(`${branch.name}: ${error.message}`);
-        }
+        const pricesFrom =
+          last &&
+          (await keepLastPrices({
+            ...entry,
+            products: last.products,
+            sourceFile: last.sourceFile,
+            pricesFrom: last.pricesFrom,
+          }));
+        chainReport.errors.push(
+          `${branch.name}: ${error.message}${pricesFrom ? ` (kept prices from ${pricesFrom})` : ''}`
+        );
         console.log(`  ✗ ${branch.name}: ${error.message}`);
       }
     }
   } catch (error) {
-    chainReport.errors.push(error.message);
-    console.log(`  ✗ ${error.message}`);
+    // The chain's site can't be reached (some block computers outside Israel, like
+    // GitHub's): its branches as they were last time (from the run on a computer
+    // in Israel, see run-at-home.ps1).
+    let kept = 0;
+    for (const last of previous.stores.filter((store) => store.chain === chain.key)) {
+      if (await keepLastPrices(last)) kept++;
+    }
+    chainReport.errors.push(`${error.message}${kept ? ` (kept ${kept} branches from last time)` : ''}`);
+    console.log(`  ✗ ${error.message}${kept ? ` (kept ${kept} branches from last time)` : ''}`);
   } finally {
     source?.close();
   }

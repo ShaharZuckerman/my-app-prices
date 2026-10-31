@@ -50,3 +50,13 @@ Not read: Dor Alon (its server sends files from a second address); the
 binaprojects sites (King Store, Maayan 2000, Good Pharm, Zol Vebegadol, Super
 Sapir, City Market, Bareket, Shuk Hayir, Shefa Birkat Hashem: their security
 certificate is revoked); Netiv Hesed (its site shows a database error).
+
+## The run at home
+
+Some chains' sites (Carrefour, Victory, H. Cohen, Mahsanei HaShuk, Hazi Hinam,
+Super-Pharm, K.T.) block computers outside Israel, like GitHub's. So a computer
+in Israel also runs the build every morning, `run-at-home.cmd`, from Windows Task
+Scheduler (task "Grocery prices", daily at 08:30, or as soon as the computer is
+on). It publishes every chain; GitHub's run keeps the blocked chains' prices from
+it ("kept N branches from last time" in report.json). What the last run did is in
+`logs\run-at-home.log`.
