@@ -5,8 +5,10 @@ name: Prices
 
 on:
   schedule:
-    # 02:30 UTC = 04:30/05:30 in Israel, after the chains publish their nightly files.
-    - cron: '30 2 * * *'
+    # 05:00 UTC = 07:00/08:00 in Israel, after the chains publish their morning files
+    # (full prices at about 05:00-05:20, branch lists by 06:00; some sites list
+    # only today's files).
+    - cron: '0 5 * * *'
   push:
     branches: [main]
   workflow_dispatch:
@@ -17,7 +19,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

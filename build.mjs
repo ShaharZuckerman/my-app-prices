@@ -139,6 +139,130 @@ const shufersal = {
   close() {},
 };
 
+/**
+ * The newest full price file of a branch, from a list of file names, e.g.
+ * PriceFull7290058140886-001-015-20261028-060951.gz: chain, sub-chain (001),
+ * branch (zeros in front), date. Some chains leave out the sub-chain.
+ */
+function newestPriceFull(names, chain, store) {
+  const pattern = new RegExp(`^PriceFull${chain.chainId}(?:-\\d+)?-0*${store.storeId}-\\d{8}`);
+  return names.filter((each) => pattern.test(each)).sort().at(-1);
+}
+
+// ---- Carrefour: its own website (a page of files per day) ---------------------
+
+const CarrefourSite = 'https://prices.carrefour.co.il/';
+
+/** "20261031" for today, and for the days before. */
+function dayCode(daysAgo) {
+  return new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10).replace(/-/g, '');
+}
+
+async function carrefour(chain) {
+  // Its full price files come out at about 05:10, after this runs: yesterday's too.
+  const links = new Map();
+  for (const day of [dayCode(1), dayCode(0)]) {
+    const page = (await download(`${CarrefourSite}?date=${day}`)).toString();
+    const path = page.match(/const path = '(\d+)'/)?.[1];
+    const files = JSON.parse(page.match(/const files = (\[.*?\]);/)?.[1] ?? '[]');
+    for (const { name } of files) links.set(name, `${CarrefourSite}${path}/${name}`);
+  }
+  const names = [...links.keys()];
+  console.log(`  ${names.length} files on the site`);
+  return {
+    async stores() {
+      const name = names.filter((each) => each.startsWith(`Stores${chain.chainId}`)).sort().at(-1);
+      if (!name) throw new Error('no branches file on the Carrefour site');
+      return readStores(toText(await download(links.get(name))));
+    },
+    async prices(store) {
+      const name = newestPriceFull(names, chain, store);
+      if (!name) throw new Error(`no full price file for branch ${store.storeId}`);
+      return { items: readPrices(toText(await download(links.get(name)))), file: name };
+    },
+    close() {},
+  };
+}
+
+// ---- laibcatalog: a shared site with a file list (Victory, H. Cohen, Mahsanei HaShuk) --
+
+const LaibCatalog = 'https://laibcatalog.co.il/webapi/';
+
+async function laibcatalog(chain) {
+  const files = JSON.parse(
+    (await download(`${LaibCatalog}api/getfiles?edi=${chain.chainId}`)).toString()
+  );
+  const names = files.map((file) => file.fileName);
+  console.log(`  ${names.length} files on the site`);
+  const link = (name) => `${LaibCatalog}${chain.chainId}/${encodeURIComponent(name)}`;
+  return {
+    async stores() {
+      const name = names.filter((each) => each.startsWith(`Stores${chain.chainId}`)).sort().at(-1);
+      if (!name) throw new Error('no branches file on the site');
+      return readStores(toText(await download(link(name))));
+    },
+    async prices(store) {
+      const name = newestPriceFull(names, chain, store);
+      if (!name) throw new Error(`no full price file for branch ${store.storeId}`);
+      return { items: readPrices(toText(await download(link(name)))), file: name };
+    },
+    close() {},
+  };
+}
+
+// ---- Pages of download links (Hazi Hinam, Super-Pharm, Wolt, K.T.) ------------
+// config.json's "pages": the pages that list the branches file and the full price
+// files. In them {iso} is a date (2026-10-31) and {dmy} too (31/10/2026), for today
+// and yesterday; {page} is 1, 2, 3… until a page has no new files.
+
+const MaxPages = 80;
+
+/** The files linked on a page (or listed in JSON as "url"): file name → full link. */
+async function linksOn(url) {
+  const page = (await download(url)).toString();
+  const links = new Map();
+  for (const [, href] of page.matchAll(/(?:href="|"url":")([^"]*(?:PriceFull|Stores)[^"]*)"/g)) {
+    const full = new URL(href.replace(/&amp;/g, '&'), url).href;
+    links.set(full.split('?')[0].split('/').pop(), full);
+  }
+  return links;
+}
+
+async function linkPages(chain) {
+  const links = new Map();
+  for (const template of chain.pages) {
+    const days = /\{(iso|dmy)\}/.test(template) ? [1, 0] : [0];
+    for (const daysAgo of days) {
+      const iso = dayCode(daysAgo).replace(/(\d{4})(\d\d)(\d\d)/, '$1-$2-$3');
+      const dated = template
+        .replace('{iso}', iso)
+        .replace('{dmy}', encodeURIComponent(iso.split('-').reverse().join('/')));
+      for (let page = 1; page <= (dated.includes('{page}') ? MaxPages : 1); page++) {
+        const found = await linksOn(dated.replace('{page}', String(page)));
+        const before = links.size;
+        for (const [name, link] of found) links.set(name, link);
+        if (links.size === before) break;
+      }
+    }
+  }
+  const names = [...links.keys()];
+  console.log(`  ${names.length} files on the site`);
+  return {
+    async stores() {
+      const pattern = new RegExp(`^Stores(Full)?${chain.chainId}`);
+      const name = names.filter((each) => pattern.test(each)).sort().at(-1);
+      if (!name) throw new Error('no branches file on the site');
+      return readStores(toText(await download(links.get(name))));
+    },
+    async prices(store) {
+      const name = newestPriceFull(names, chain, store);
+      if (!name) throw new Error(`no full price file for branch ${store.storeId}`);
+      return { items: readPrices(toText(await download(links.get(name)))), file: name };
+    },
+    close() {},
+  };
+}
+
 // ---- Cerberus: the shared server most chains use -------------------------------
 // Each chain logs in with the user name and password gov.il lists for it. A few
 // keep their files in a folder ("folder" in config.json).
@@ -178,10 +302,7 @@ async function cerberus(chain) {
       return readStores(toText(await fetchFile(name)));
     },
     async prices(store) {
-      // e.g. PriceFull7290058140886-001-015-20261028-060951.gz: chain, sub-chain (001),
-      // branch (zeros in front), date. Some chains leave out the sub-chain.
-      const pattern = new RegExp(`^PriceFull${chain.chainId}(?:-\\d+)?-0*${store.storeId}-\\d{8}`);
-      const name = names.filter((each) => pattern.test(each)).sort().at(-1);
+      const name = newestPriceFull(names, chain, store);
       if (!name) throw new Error(`no full price file for branch ${store.storeId}`);
       return { items: readPrices(toText(await fetchFile(name))), file: name };
     },
@@ -191,6 +312,15 @@ async function cerberus(chain) {
   };
 }
 
+// Each chain's "source" in config.json: how its files are read.
+const Sources = {
+  shufersal: () => shufersal,
+  carrefour,
+  laibcatalog,
+  pages: linkPages,
+  cerberus,
+};
+
 // ---- Where each branch is (for "stores near me" in the app) -------------------
 
 // OpenStreetMap's free address search: at most one question a second, and a
@@ -198,16 +328,34 @@ async function cerberus(chain) {
 const MapSearch = 'https://nominatim.openstreetmap.org/search';
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** A place's coordinates from OpenStreetMap, or null if it isn't found. */
-async function findOnMap(query) {
+// How far from its city's center a branch may be. The map search reads "חיפה" as the
+// Haifa district too, and found "חנה סנש 20, חיפה" in Hadera.
+const CityKm = 10;
+const cityCenters = new Map();
+
+/**
+ * A place's coordinates from OpenStreetMap, or null if it isn't found. With a
+ * city, only a place within CityKm of its center.
+ */
+async function findOnMap(query, city) {
+  const center = city ? await cityCenter(city) : null;
   await pause(1100);
-  const url = `${MapSearch}?format=json&limit=1&countrycodes=il&q=${encodeURIComponent(query)}`;
+  const url = `${MapSearch}?format=json&limit=5&countrycodes=il&q=${encodeURIComponent(query)}`;
   const response = await fetch(url, {
     headers: { 'User-Agent': 'my-app-prices (github.com/ShaharZuckerman/my-app-prices)' },
   });
   if (!response.ok) return null;
-  const [place] = await response.json();
-  return place ? { lat: +(+place.lat).toFixed(5), lng: +(+place.lon).toFixed(5) } : null;
+  const places = (await response.json()).map((place) => ({
+    lat: +(+place.lat).toFixed(5),
+    lng: +(+place.lon).toFixed(5),
+  }));
+  return places.find((place) => !center || kmBetween(center, place) <= CityKm) ?? null;
+}
+
+/** A city's center (asked once a night). */
+async function cityCenter(city) {
+  if (!cityCenters.has(city)) cityCenters.set(city, await findOnMap(city));
+  return cityCenters.get(city);
 }
 
 /**
@@ -308,7 +456,9 @@ const NotAPlace = new RegExp(
   `(^|[\\s-])(${[
     ...config.chains.flatMap((chain) => [chain.name, ...(chain.mapNames ?? [])]),
     ...['שלי', 'דיל', 'אקספרס', 'אקסטרה', 'יש', 'online', 'אונליין', 'סופר', 'מרקט'],
-  ].join('|')})(?=[\\s-]|$)`,
+  ]
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) // "ח. כהן": a dot, not any letter
+    .join('|')})(?=[\\s-]|$)`,
   'gi'
 );
 
@@ -341,13 +491,17 @@ async function locate(entry, chain) {
   const manual = config.locations?.[entry.id];
   if (manual) return { lat: manual[0], lng: manual[1], located: 'manual' };
   const last = previous.stores.find((store) => store.id === entry.id);
+  // Kept from last night, unless it's out of its city (found before CityKm was checked).
   if (last?.located === 'address' || last?.located === 'store') {
-    return { lat: last.lat, lng: last.lng, located: last.located };
+    const center = await cityCenter(entry.city);
+    if (!center || kmBetween(center, last) <= CityKm) {
+      return { lat: last.lat, lng: last.lng, located: last.located };
+    }
   }
   const address = entry.address && !/unknown/i.test(entry.address) ? entry.address : '';
   const tries = address ? [`${address}, ${entry.city}`, ...addressVariants(address, entry.city)] : [];
   for (const each of new Set(tries)) {
-    const exact = await findOnMap(each);
+    const exact = await findOnMap(each, entry.city);
     if (exact) {
       const store = nearestChainStore(chain, exact, SnapKm.address);
       return { ...(store ?? exact), located: 'address' };
@@ -358,7 +512,7 @@ async function locate(entry, chain) {
   const streets = tries.map((each) => each.replace(/\s+\d+[א-ת]?(?=,)/, '')).filter((each) => !tries.includes(each));
   let area = null;
   for (const each of new Set([...streets, ...(place ? [`${place}, ${entry.city}`] : [])])) {
-    area = await findOnMap(each);
+    area = await findOnMap(each, entry.city);
     if (area) break;
   }
   if (area) {
@@ -474,7 +628,7 @@ for (const chain of config.chains) {
   report.chains[chain.key] = chainReport;
   let source;
   try {
-    source = chain.source === 'shufersal' ? shufersal : await cerberus(chain);
+    source = await Sources[chain.source](chain);
     const branches = await source.stores();
     chainReport.branches = branches.length;
     for (const branch of branches) {

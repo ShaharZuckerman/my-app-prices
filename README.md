@@ -35,9 +35,18 @@ each chain's `"mapNames"` are the names its stores have on OpenStreetMap. Then
 on GitHub: **Actions → Prices → Run workflow**, or wait for the next night.
 
 The chains and their logins come from the Consumer Protection Authority's list,
-https://www.gov.il/he/pages/cpfta_prices_regulations. Chains on the shared
-Cerberus server (`"source": "cerberus"`) use the user name and password listed
-there; `"folder"` is for a chain that keeps its files in a folder (Super Yuda).
-Not read yet: Dor Alon (its server sends files from a second address), and the
-chains on other sites (Carrefour, Victory, Hazi Hinam, the binaprojects sites
-and others).
+https://www.gov.il/he/pages/cpfta_prices_regulations. Each chain's `"source"` is
+how its files are read:
+
+- `cerberus`: the shared server, with the user name and password listed there;
+  `"folder"` for a chain that keeps its files in a folder (Super Yuda).
+- `shufersal`, `carrefour`: their own sites.
+- `laibcatalog`: the shared site of Victory, H. Cohen and Mahsanei HaShuk.
+- `pages`: pages of download links, in `"pages"` (Hazi Hinam, Super-Pharm, Wolt
+  Market, K.T.). `{iso}` / `{dmy}` stand for today's and yesterday's date,
+  `{page}` for page 1, 2, 3…
+
+Not read: Dor Alon (its server sends files from a second address); the
+binaprojects sites (King Store, Maayan 2000, Good Pharm, Zol Vebegadol, Super
+Sapir, City Market, Bareket, Shuk Hayir, Shefa Birkat Hashem: their security
+certificate is revoked); Netiv Hesed (its site shows a database error).

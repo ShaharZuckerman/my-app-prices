@@ -62,6 +62,20 @@
       ]
     },
     {
+      "key": "carrefour",
+      "name": "קרפור",
+      "chainId": "7290055700007",
+      "source": "carrefour",
+      "mapNames": [
+        "קרפור",
+        "Carrefour",
+        "מגה",
+        "Mega",
+        "יינות ביתן",
+        "Yeinot Bitan"
+      ]
+    },
+    {
       "key": "rami-levy",
       "name": "רמי לוי",
       "chainId": "7290058140886",
@@ -205,12 +219,101 @@
         "קשת טעמים",
         "Keshet"
       ]
+    },
+    {
+      "key": "victory",
+      "name": "ויקטורי",
+      "chainId": "7290696200003",
+      "source": "laibcatalog",
+      "mapNames": [
+        "ויקטורי",
+        "Victory"
+      ]
+    },
+    {
+      "key": "h-cohen",
+      "name": "ח. כהן",
+      "chainId": "7290455000004",
+      "source": "laibcatalog",
+      "mapNames": [
+        "ח. כהן",
+        "H. Cohen"
+      ]
+    },
+    {
+      "key": "mahsanei-hashuk",
+      "name": "מחסני השוק",
+      "chainId": "7290661400001",
+      "source": "laibcatalog",
+      "mapNames": [
+        "מחסני השוק",
+        "Mahsanei Hashuk"
+      ]
+    },
+    {
+      "key": "hazi-hinam",
+      "name": "חצי חינם",
+      "chainId": "7290700100008",
+      "source": "pages",
+      "pages": [
+        "https://shop.hazi-hinam.co.il/Prices?t=3",
+        "https://shop.hazi-hinam.co.il/Prices?t=1"
+      ],
+      "mapNames": [
+        "חצי חינם",
+        "Hazi Hinam"
+      ]
+    },
+    {
+      "key": "super-pharm",
+      "name": "סופר-פארם",
+      "chainId": "7290172900007",
+      "source": "pages",
+      "pages": [
+        "https://prices.super-pharm.co.il/?Category-equals=Stores",
+        "https://prices.super-pharm.co.il/?Category-equals=PriceFull&Date-equals={dmy}&page={page}"
+      ],
+      "mapNames": [
+        "סופר-פארם",
+        "סופר פארם",
+        "Super-Pharm"
+      ]
+    },
+    {
+      "key": "wolt-market",
+      "name": "וולט מרקט",
+      "chainId": "7290058249350",
+      "source": "pages",
+      "pages": [
+        "https://wm-gateway.wolt.com/isr-prices/public/v1/{iso}.html"
+      ],
+      "mapNames": [
+        "וולט מרקט",
+        "Wolt Market"
+      ]
+    },
+    {
+      "key": "kt",
+      "name": "משנת יוסף (ק.ט.)",
+      "chainId": "5144744100002",
+      "source": "pages",
+      "pages": [
+        "https://list-files.w5871031-kt.workers.dev/"
+      ],
+      "mapNames": [
+        "משנת יוסף",
+        "Mishnat Yosef"
+      ]
     }
   ],
   "locations": {
     "salach-dabach-19": [
       32.79015,
       35.02863
+    ],
+    "rami-levy-62": [
+      32.78684,
+      35.03037
     ]
   }
 }
