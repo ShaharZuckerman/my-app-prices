@@ -14,6 +14,8 @@ echo %date% %time%
 git pull -q --ff-only || echo (no update from GitHub, building with this copy)
 if exist previous rmdir /s /q previous
 git clone -q --depth 1 --branch data https://github.com/ShaharZuckerman/my-app-prices.git previous || exit /b 1
+rem Only the chains that need a computer in Israel; the others are kept from GitHub's run.
+set RUN_AT=home
 node build.mjs || exit /b 1
 cd out
 git init -q -b data

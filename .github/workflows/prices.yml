@@ -19,7 +19,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,7 +33,10 @@ jobs:
           ref: data
           path: previous
       - run: npm ci
+      # The chains that block computers outside Israel are kept from the run at home.
       - run: node build.mjs
+        env:
+          RUN_AT: github
       # Only the newest files are kept: the data branch is replaced each night.
       - name: Publish to the data branch
         run: |

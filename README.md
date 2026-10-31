@@ -1,33 +1,40 @@
 # Grocery List – prices
 
-Nightly grocery prices for the Grocery List app, for a few cities only.
+Daily grocery prices for the Grocery List app, for all of Israel.
 
 Israeli supermarket chains publish their prices every day, by law (the price
-transparency law). Every night, GitHub runs `build.mjs`, which:
+transparency law). Every morning, GitHub runs `build.mjs`, which:
 
-1. reads each chain's list of branches,
-2. keeps the branches in the cities listed in `config.json`,
-3. turns each kept branch's full price file into a small JSON file,
+1. reads each chain's list of branches (all of Israel),
+2. finds where each branch is on the map (OpenStreetMap's address search: at
+   most 25 minutes a run, so new branches are placed over a few runs),
+3. turns each branch's full price file into a small JSON file,
 4. publishes them on the **`data`** branch of this repository.
 
-The app reads `stores.json` and the files in `prices/` from the `data` branch.
+The app downloads `branches.json`, then only the branches near the phone and
+their chains' product lists.
 
 ## Files on the `data` branch
 
-- `stores.json`: the branches, with their chain, name, city, address and place on
-  the map (`located` says how it was found: by address, or set by hand).
-- `prices/<branch id>.json`: one branch's products, each as
-  `[barcode, name, maker, price, amount, unit, price per unit, by weight (1/0)]`.
-- `report.json`: every city each chain lists, how many branches were kept, and
-  any errors. Use it to adjust the city names in `config.json`. Its `located`
-  lists which branches were placed how.
+- `branches.json`: every branch, with its chain, name, city, address and place on
+  the map (`located` says how it was found; `unknown`: not placed yet).
+- `chains/<chain>.json`: a chain's products, each `[barcode, name, by weight (1/0)]`.
+- `branches/<branch id>.json`: one branch's prices, in its chain's product order
+  (0: not sold there).
+- `report.json`: every city each chain lists, errors, how many branches were
+  placed how, and the ones not placed yet (`notPlaced`).
 - `groceries.json`: every grocery in Israel that OpenStreetMap knows of
   (supermarkets, minimarkets, greengrocers, butchers, delis), asked once a night,
   for the app's map. Also used to put branches exactly on their store.
+- `places.json`: the cities' centers found so far (not searched for again).
+- `stores.json`, `catalog.json`: the Haifa area only (`"cities"` in
+  `config.json`), for the app's versions before 2026-11; can go once every phone
+  has the new one.
 
 ## Changing the cities or chains
 
-Edit `config.json` (city names in Hebrew, with their official city codes). A chain
+Every branch in Israel is read; a city given as a code is named with
+`city-codes.json` (the official list of towns, from data.gov.il). A chain
 whose branches have no city (code 0) can list branches by number instead, in its
 `"branches"` (branch number → city). A branch the map can't find by its address
 can be placed by hand in `"locations"` (branch id → [latitude, longitude]), and
@@ -57,6 +64,8 @@ Some chains' sites (Carrefour, Victory, H. Cohen, Mahsanei HaShuk, Hazi Hinam,
 Super-Pharm, K.T.) block computers outside Israel, like GitHub's. So a computer
 in Israel also runs the build every morning, `run-at-home.cmd`, from Windows Task
 Scheduler (task "Grocery prices", daily at 08:30, or as soon as the computer is
-on). It publishes every chain; GitHub's run keeps the blocked chains' prices from
-it ("kept N branches from last time" in report.json). What the last run did is in
+on). Those chains are marked `"israel": true` in `config.json`: at home
+(`RUN_AT=home`) only they are read, and on GitHub (`RUN_AT=github`) only the
+others; each run keeps the other half from the last published files ("kept N
+branches from last time" in report.json). What the last run did is in
 `logs\run-at-home.log`.

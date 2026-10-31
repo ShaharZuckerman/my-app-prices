@@ -1,12 +1,16 @@
 // Builds the price files for the Grocery List app, from the price files the
 // chains publish by law (Israel's price transparency law).
 //
-// For each chain in config.json: read its list of branches, keep the ones in
-// the chosen cities, and turn each kept branch's full price file into a small
-// JSON file. Everything goes into ./out:
-//   out/stores.json          the kept branches (which file has each one's prices)
-//   out/prices/<id>.json     one branch's products and prices
+// For each chain in config.json: read its list of branches (all of Israel), find
+// where each one is, and turn its full price file into a small JSON file. The app
+// downloads only the branches near the phone. Everything goes into ./out:
+//   out/branches.json        every branch: chain, name, city, address, place on the map
+//   out/chains/<key>.json    a chain's products: [barcode, name, by weight]
+//   out/branches/<id>.json   a branch's prices, in its chain's product order (0: not sold)
+//   out/groceries.json       every grocery on OpenStreetMap, for the app's map
+//   out/places.json          the cities' centers found so far
 //   out/report.json          what was found (every city seen, errors), to tune config.json
+//   out/stores.json, out/catalog.json   the Haifa area only, for the app's older versions
 //
 // Run with: node build.mjs   (GitHub runs it every night, see .github/workflows)
 import { Client } from 'basic-ftp';
@@ -71,7 +75,30 @@ function normalizeCity(name) {
     .trim();
 }
 
-/** The chosen city a branch is in, or null. Uses the city field, else the branch's name. */
+// Every town's official code and name (city-codes.json, from data.gov.il): many chains
+// give a branch's city as its code ("4000" is Haifa).
+const cityCodes = JSON.parse(
+  await fs.readFile(new URL('./city-codes.json', import.meta.url), 'utf8')
+).codes;
+// Longest first, so "קרית אתא" is found before "אתא" would be.
+const cityNames = [...new Set(Object.values(cityCodes))]
+  .map((name) => ({ name, normalized: normalizeCity(name) }))
+  .filter(({ normalized }) => normalized.length >= 3)
+  .sort((a, b) => b.normalized.length - a.normalized.length);
+
+/**
+ * The city a branch is in, anywhere in Israel: by its code, its name as written,
+ * or a town's name in the branch's name or address. Empty if none is found.
+ */
+function cityName(store) {
+  const code = text(store.city);
+  if (/^\d+$/.test(code) && +code > 0) return cityCodes[+code] ?? '';
+  if (code && !/^0+$/.test(code)) return code;
+  const words = ` ${normalizeCity(`${store.name} ${store.address}`)} `;
+  return cityNames.find(({ normalized }) => words.includes(` ${normalized} `))?.name ?? '';
+}
+
+/** The chosen city a branch is in (the Haifa area, for the app's older versions), or null. */
 function cityOf(store) {
   const city = normalizeCity(store.city);
   for (const chosen of config.cities) {
@@ -336,28 +363,41 @@ const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // How far from its city's center a branch may be. The map search reads "חיפה" as the
 // Haifa district too, and found "חנה סנש 20, חיפה" in Hadera.
 const CityKm = 10;
+// Each city's center, kept from run to run (places.json).
 const cityCenters = new Map();
 
+// One search a second, and about 1,900 branches in Israel: each run searches for at
+// most this long (minutes), and the branches not reached are searched for next time.
+const SearchForMs = Number(process.env.SEARCH_MINUTES ?? 25) * 60_000;
+let searchedMs = 0;
+
 /**
- * A place's coordinates from OpenStreetMap, or null if it isn't found. With a
- * city, only a place within CityKm of its center.
+ * A place's coordinates from OpenStreetMap, or null if it isn't found (or this
+ * run's searching time is used up). With a city, only a place within CityKm of
+ * its center.
  */
 async function findOnMap(query, city) {
   const center = city ? await cityCenter(city) : null;
-  await pause(1100);
-  const url = `${MapSearch}?format=json&limit=5&countrycodes=il&q=${encodeURIComponent(query)}`;
-  const response = await fetch(url, {
-    headers: { 'User-Agent': 'my-app-prices (github.com/ShaharZuckerman/my-app-prices)' },
-  });
-  if (!response.ok) return null;
-  const places = (await response.json()).map((place) => ({
-    lat: +(+place.lat).toFixed(5),
-    lng: +(+place.lon).toFixed(5),
-  }));
-  return places.find((place) => !center || kmBetween(center, place) <= CityKm) ?? null;
+  if (searchedMs > SearchForMs) return null;
+  const started = Date.now();
+  try {
+    await pause(1100);
+    const url = `${MapSearch}?format=json&limit=5&countrycodes=il&q=${encodeURIComponent(query)}`;
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'my-app-prices (github.com/ShaharZuckerman/my-app-prices)' },
+    });
+    if (!response.ok) return null;
+    const places = (await response.json()).map((place) => ({
+      lat: +(+place.lat).toFixed(5),
+      lng: +(+place.lon).toFixed(5),
+    }));
+    return places.find((place) => !center || kmBetween(center, place) <= CityKm) ?? null;
+  } finally {
+    searchedMs += Date.now() - started;
+  }
 }
 
-/** A city's center (asked once a night). */
+/** A city's center (searched for once, then kept; null if the map doesn't know it). */
 async function cityCenter(city) {
   if (!cityCenters.has(city)) cityCenters.set(city, await findOnMap(city));
   return cityCenters.get(city);
@@ -495,7 +535,7 @@ function placeInName(entry) {
 async function locate(entry, chain) {
   const manual = config.locations?.[entry.id];
   if (manual) return { lat: manual[0], lng: manual[1], located: 'manual' };
-  const last = previous.stores.find((store) => store.id === entry.id);
+  const last = lastTime.get(entry.id);
   // Kept from last night, unless it's out of its city (found before CityKm was checked).
   if (last?.located === 'address' || last?.located === 'store') {
     const center = await cityCenter(entry.city);
@@ -503,6 +543,8 @@ async function locate(entry, chain) {
       return { lat: last.lat, lng: last.lng, located: last.located };
     }
   }
+  // Without its city, a search could find the same street anywhere in Israel.
+  if (!entry.city) return { located: 'unknown' };
   const address = entry.address && !/unknown/i.test(entry.address) ? entry.address : '';
   const tries = address ? [`${address}, ${entry.city}`, ...addressVariants(address, entry.city)] : [];
   for (const each of new Set(tries)) {
@@ -586,22 +628,38 @@ async function findShops() {
 
 // ---- Putting it together --------------------------------------------------
 
-// Last night's files (the workflow puts the data branch in ./previous), for branches
-// without a fresh price file tonight.
+// Which chains this run reads. The sites that block computers outside Israel
+// ("israel": true in config.json) are read at home (RUN_AT=home, run-at-home.cmd)
+// and kept from there on GitHub (RUN_AT=github); at home the other chains are kept
+// from GitHub's run. Without RUN_AT, every chain is read.
+const RunAt = process.env.RUN_AT ?? 'all';
+const readsChain = (chain) =>
+  RunAt === 'github' ? !chain.israel : RunAt === 'home' ? Boolean(chain.israel) : true;
+
+// Last time's files (the data branch, put in ./previous by the workflow and by
+// run-at-home.cmd): places already found, and prices for branches not read this time.
 const PREVIOUS = new URL('./previous/', import.meta.url);
-const previous = JSON.parse(
-  await fs.readFile(new URL('./stores.json', PREVIOUS), 'utf8').catch(() => '{"stores":[]}')
-);
+const readPrevious = (file) =>
+  fs.readFile(new URL(file, PREVIOUS), 'utf8').then(JSON.parse).catch(() => null);
+// branches.json; before it existed, stores.json (the Haifa area only).
+const previousBranches =
+  (await readPrevious('branches.json'))?.branches ??
+  (await readPrevious('stores.json'))?.stores ??
+  [];
+const lastTime = new Map(previousBranches.map((branch) => [branch.id, branch]));
+const previousPlaces = (await readPrevious('places.json'))?.cityCenters ?? {};
+for (const [city, [lat, lng]] of Object.entries(previousPlaces)) {
+  cityCenters.set(city, { lat, lng });
+}
 
 await fs.rm(OUT, { recursive: true, force: true });
-await fs.mkdir(new URL('./prices/', OUT), { recursive: true });
+await fs.mkdir(new URL('./branches/', OUT), { recursive: true });
+await fs.mkdir(new URL('./chains/', OUT), { recursive: true });
 
 // The groceries on the map first (they help place the branches). If no server
 // answers tonight, last night's list is used.
 console.log('Groceries on the map (OpenStreetMap)');
-const previousShops = JSON.parse(
-  await fs.readFile(new URL('./groceries.json', PREVIOUS), 'utf8').catch(() => '{"shops":[]}')
-);
+const previousShops = (await readPrevious('groceries.json')) ?? { shops: [] };
 const foundShops = await findShops();
 const osmShops =
   foundShops ??
@@ -610,83 +668,167 @@ const osmShops =
   }));
 console.log(`  ${osmShops.length} groceries${foundShops ? '' : ' (from last night)'}`);
 
-const stores = [];
-const report = { builtAt: new Date().toISOString(), chains: {} };
-// Every product once (by barcode), with its price in each branch: catalog.json.
-const catalog = new Map();
+const report = { builtAt: new Date().toISOString(), runAt: RunAt, chains: {} };
+// Every branch in Israel with prices: branches.json.
+const branches = [];
 
-function addToCatalog(items) {
-  const storeIndex = stores.length - 1;
-  for (const [code, name, , price, , , , weighted] of items) {
-    let product = catalog.get(code);
+// A chain's products, as they're added: barcode → its place in chains/<key>.json, and
+// for each of its branches, which products it has and their prices.
+function newChain() {
+  return { index: new Map(), products: [], branches: [] };
+}
+
+/** Adds a branch's products ([barcode, name, price, by weight]) to its chain. */
+function addBranch(chainData, entry, items) {
+  const places = new Int32Array(items.length);
+  const prices = new Float64Array(items.length);
+  items.forEach(([code, name, price, weighted], i) => {
+    let place = chainData.index.get(code);
+    if (place === undefined) {
+      place = chainData.products.length;
+      chainData.index.set(code, place);
+      chainData.products.push([code, name, weighted]);
+    }
+    places[i] = place;
+    prices[i] = price;
+  });
+  chainData.branches.push({ id: entry.id, places, prices });
+  branches.push(entry);
+  if (isChosenCity(entry.city)) addToOldFiles(entry, items);
+}
+
+/**
+ * chains/<key>.json: the chain's products, [barcode, name, by weight (1/0)]. And
+ * branches/<id>.json: each branch's prices, in the same order (0: not sold there).
+ */
+async function writeChain(chain, chainData) {
+  if (chainData.branches.length === 0) return;
+  await fs.writeFile(
+    new URL(`./chains/${chain.key}.json`, OUT),
+    JSON.stringify({ builtAt: report.builtAt, products: chainData.products })
+  );
+  for (const { id, places, prices } of chainData.branches) {
+    const all = new Array(chainData.products.length).fill(0);
+    places.forEach((place, i) => (all[place] = prices[i]));
+    await fs.writeFile(new URL(`./branches/${id}.json`, OUT), JSON.stringify(all));
+  }
+}
+
+// Last time's chains/<key>.json, read once each.
+const lastChains = new Map();
+
+/** A branch's products last time, [barcode, name, price, by weight], or null. */
+async function lastItems(branch) {
+  const prices = await readPrevious(`branches/${branch.id}.json`);
+  if (prices) {
+    if (!lastChains.has(branch.chain)) {
+      lastChains.set(branch.chain, await readPrevious(`chains/${branch.chain}.json`));
+    }
+    const products = lastChains.get(branch.chain)?.products;
+    if (products?.length === prices.length) {
+      return prices.flatMap((price, i) =>
+        price ? [[products[i][0], products[i][1], price, products[i][2]]] : []
+      );
+    }
+  }
+  // Before branches/ existed: prices/<id>.json, [barcode, name, maker, price, …, by weight].
+  const old = await readPrevious(`prices/${branch.id}.json`);
+  return old && old.map((item) => [item[0], item[1], item[3], item[7]]);
+}
+
+/** A branch with its prices from last time (if there are any): when they're from, else null. */
+async function keepLastPrices(chainData, branch) {
+  const items = await lastItems(branch);
+  if (!items) return null;
+  addBranch(chainData, branch, items);
+  return branch.pricesFrom;
+}
+
+// ---- The files for the app's older versions (the Haifa area only) ----------
+// stores.json and catalog.json, as before branches.json: older versions of the app
+// read them until the phones have the new one.
+
+const oldStores = [];
+// Every product once (by barcode), with its price in each branch.
+const oldCatalog = new Map();
+const isChosenCity = (city) => config.cities.some((chosen) => chosen.name === city);
+
+function addToOldFiles(entry, items) {
+  oldStores.push(entry);
+  const storeIndex = oldStores.length - 1;
+  for (const [code, name, price, weighted] of items) {
+    let product = oldCatalog.get(code);
     if (!product) {
       product = [name, weighted, [], code];
-      catalog.set(code, product);
+      oldCatalog.set(code, product);
     }
     product[2].push(storeIndex, price);
   }
 }
 
-/** A branch with its prices from last time (if there are any): when they're from, else null. */
-async function keepLastPrices(branch) {
-  const lastFile = await fs.readFile(new URL(`./prices/${branch.id}.json`, PREVIOUS)).catch(() => null);
-  if (!lastFile) return null;
-  await fs.writeFile(new URL(`./prices/${branch.id}.json`, OUT), lastFile);
-  stores.push(branch);
-  addToCatalog(JSON.parse(lastFile.toString()));
-  return branch.pricesFrom;
-}
+// ---- Every chain -------------------------------------------------------------
 
 for (const chain of config.chains) {
   console.log(`\n${chain.name} (${chain.key})`);
-  const chainReport = { branches: 0, kept: 0, citiesSeen: {}, errors: [] };
+  const chainReport = { branches: 0, read: 0, citiesSeen: {}, errors: [] };
   report.chains[chain.key] = chainReport;
+  const chainData = newChain();
+  // Not read this time (or its site can't be reached): its branches as they were last time.
+  const keepChain = async (reason) => {
+    let kept = 0;
+    for (const last of previousBranches.filter((branch) => branch.chain === chain.key)) {
+      if (await keepLastPrices(chainData, last)) kept++;
+    }
+    chainReport.kept = kept;
+    console.log(`  ${reason}: kept ${kept} branches from last time`);
+  };
   let source;
   try {
+    if (!readsChain(chain)) {
+      await keepChain(chain.israel ? 'read at home' : 'read on GitHub');
+      continue;
+    }
     source = await Sources[chain.source](chain);
-    const branches = await source.stores();
-    chainReport.branches = branches.length;
-    for (const branch of branches) {
+    const found = await source.stores();
+    chainReport.branches = found.length;
+    for (const branch of found) {
       const seen = branch.city || '(none)';
       chainReport.citiesSeen[seen] = (chainReport.citiesSeen[seen] ?? 0) + 1;
     }
-    // In a chosen city, or added by hand in config.json ("branches").
-    const extra = chain.branches ?? {};
-    const kept = branches.filter((branch) => cityOf(branch) || extra[branch.storeId]);
-    chainReport.kept = kept.length;
     chainReport.files = chain.fileSample;
-    // Branches whose city is unknown (code 0 or empty): their names and addresses, to match by hand.
-    chainReport.unknownCity = branches
-      .filter((branch) => !branch.city || /^0+$/.test(branch.city))
+    const extra = chain.branches ?? {};
+    const city = (branch) => cityOf(branch) ?? extra[branch.storeId] ?? cityName(branch);
+    // Branches whose city isn't known: their names and addresses, to match by hand.
+    chainReport.unknownCity = found
+      .filter((branch) => !city(branch))
       .map((branch) => `${branch.storeId} · ${branch.name} · ${branch.address}`);
-    chainReport.keptBranches = kept.map((branch) => `${branch.storeId} · ${branch.name}`);
-    console.log(`  ${branches.length} branches, ${kept.length} in the chosen cities`);
+    console.log(`  ${found.length} branches`);
 
-    for (const branch of kept) {
+    for (const branch of found) {
       const id = `${chain.key}-${branch.storeId}`;
       const entry = {
         id,
         chain: chain.key,
         chainName: chain.name,
-        subChain: branch.subChain,
-        storeId: branch.storeId,
         name: branch.name,
-        city: cityOf(branch) ?? extra[branch.storeId],
+        city: city(branch),
         address: branch.address,
       };
-      Object.assign(entry, await locate(entry, chain).catch(() => ({})));
+      Object.assign(entry, await locate(entry, chain).catch(() => ({ located: 'unknown' })));
       try {
         const { items, file } = await source.prices(branch);
-        await fs.writeFile(new URL(`./prices/${id}.json`, OUT), JSON.stringify(items));
-        stores.push({ ...entry, products: items.length, sourceFile: file, pricesFrom: report.builtAt });
-        addToCatalog(items);
-        console.log(`  ✓ ${branch.name}: ${items.length} products`);
+        addBranch(
+          chainData,
+          { ...entry, products: items.length, sourceFile: file, pricesFrom: report.builtAt },
+          items.map((item) => [item[0], item[1], item[3], item[7]])
+        );
+        chainReport.read++;
       } catch (error) {
         // No fresh file tonight: keep the last prices we had for this branch, if any.
-        const last = previous.stores.find((store) => store.id === id);
+        const last = lastTime.get(id);
         const pricesFrom =
           last &&
-          (await keepLastPrices({
+          (await keepLastPrices(chainData, {
             ...entry,
             products: last.products,
             sourceFile: last.sourceFile,
@@ -695,34 +837,67 @@ for (const chain of config.chains) {
         chainReport.errors.push(
           `${branch.name}: ${error.message}${pricesFrom ? ` (kept prices from ${pricesFrom})` : ''}`
         );
-        console.log(`  ✗ ${branch.name}: ${error.message}`);
       }
     }
+    console.log(`  ✓ ${chainReport.read} branches read, ${chainReport.errors.length} not`);
   } catch (error) {
-    // The chain's site can't be reached (some block computers outside Israel, like
-    // GitHub's): its branches as they were last time (from the run on a computer
-    // in Israel, see run-at-home.ps1).
-    let kept = 0;
-    for (const last of previous.stores.filter((store) => store.chain === chain.key)) {
-      if (await keepLastPrices(last)) kept++;
-    }
-    chainReport.errors.push(`${error.message}${kept ? ` (kept ${kept} branches from last time)` : ''}`);
-    console.log(`  ✗ ${error.message}${kept ? ` (kept ${kept} branches from last time)` : ''}`);
+    // The chain's site can't be reached: as last time.
+    chainReport.errors.push(error.message);
+    await keepChain(`✗ ${error.message}`);
   } finally {
     source?.close();
+    await writeChain(chain, chainData);
   }
 }
 
+// ---- The files ------------------------------------------------------------
+
+// Every branch with prices: where it is, and when its prices are from.
+await fs.writeFile(
+  new URL('./branches.json', OUT),
+  JSON.stringify({
+    builtAt: report.builtAt,
+    branches: branches.map((branch) => ({
+      id: branch.id,
+      chain: branch.chain,
+      chainName: branch.chainName,
+      name: branch.name,
+      city: branch.city,
+      address: branch.address,
+      lat: branch.lat,
+      lng: branch.lng,
+      located: branch.located,
+      products: branch.products,
+      sourceFile: branch.sourceFile,
+      pricesFrom: branch.pricesFrom,
+    })),
+  })
+);
+// The cities' centers found so far (so they aren't searched for again).
+await fs.writeFile(
+  new URL('./places.json', OUT),
+  JSON.stringify({
+    cityCenters: Object.fromEntries(
+      [...cityCenters]
+        .filter(([, center]) => center)
+        .map(([city, { lat, lng }]) => [city, [lat, lng]])
+    ),
+  })
+);
+// For the app's older versions (the Haifa area):
+// [name, by weight (1/0), [branch index, price, branch index, price…], barcode],
+// branch index = place in stores.json's "stores".
 await fs.writeFile(
   new URL('./stores.json', OUT),
-  JSON.stringify({ builtAt: report.builtAt, cities: config.cities.map((c) => c.name), stores }, null, 1)
+  JSON.stringify(
+    { builtAt: report.builtAt, cities: config.cities.map((c) => c.name), stores: oldStores },
+    null,
+    1
+  )
 );
-// The app's price estimates:
-// [name, by weight (1/0), [branch index, price, branch index, price…], barcode],
-// branch index = place in stores.json's "stores". The barcode finds products on receipts.
 await fs.writeFile(
   new URL('./catalog.json', OUT),
-  JSON.stringify({ builtAt: report.builtAt, products: [...catalog.values()] })
+  JSON.stringify({ builtAt: report.builtAt, products: [...oldCatalog.values()] })
 );
 // The groceries on the map: [lat, lng, kind (supermarket, convenience…), name,
 // address, every name and brand (lowercase, " | " between them)].
@@ -736,11 +911,25 @@ await fs.writeFile(
   })
 );
 report.groceries = { count: osmShops.length, fresh: foundShops !== null };
+report.searchedMinutes = Math.round(searchedMs / 60_000);
 report.located = Object.fromEntries(
   ['manual', 'address', 'store', 'area', 'unknown'].map((how) => [
     how,
-    stores.filter((store) => store.located === how).map((store) => `${store.id} · ${store.name}`),
+    branches.filter((branch) => branch.located === how).length,
+  ])
+);
+// The branches not placed exactly yet (searched for again next time), by chain.
+report.notPlaced = Object.fromEntries(
+  config.chains.map((chain) => [
+    chain.key,
+    branches
+      .filter((branch) => branch.chain === chain.key)
+      .filter((branch) => branch.located === 'unknown' || branch.located === 'area')
+      .map((branch) => `${branch.id} · ${branch.name} · ${branch.city}`),
   ])
 );
 await fs.writeFile(new URL('./report.json', OUT), JSON.stringify(report, null, 1));
-console.log(`\nDone: ${stores.length} branches with prices.`);
+console.log(
+  `\nDone: ${branches.length} branches with prices (${oldStores.length} in the Haifa area), ` +
+    `${report.located.unknown} not placed yet.`
+);

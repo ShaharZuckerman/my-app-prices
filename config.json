@@ -66,6 +66,7 @@
       "name": "קרפור",
       "chainId": "7290055700007",
       "source": "carrefour",
+      "israel": true,
       "mapNames": [
         "קרפור",
         "Carrefour",
@@ -225,6 +226,7 @@
       "name": "ויקטורי",
       "chainId": "7290696200003",
       "source": "laibcatalog",
+      "israel": true,
       "mapNames": [
         "ויקטורי",
         "Victory"
@@ -235,6 +237,7 @@
       "name": "ח. כהן",
       "chainId": "7290455000004",
       "source": "laibcatalog",
+      "israel": true,
       "mapNames": [
         "ח. כהן",
         "H. Cohen"
@@ -245,6 +248,7 @@
       "name": "מחסני השוק",
       "chainId": "7290661400001",
       "source": "laibcatalog",
+      "israel": true,
       "mapNames": [
         "מחסני השוק",
         "Mahsanei Hashuk"
@@ -255,6 +259,7 @@
       "name": "חצי חינם",
       "chainId": "7290700100008",
       "source": "pages",
+      "israel": true,
       "pages": [
         "https://shop.hazi-hinam.co.il/Prices?t=3",
         "https://shop.hazi-hinam.co.il/Prices?t=1"
@@ -269,6 +274,7 @@
       "name": "סופר-פארם",
       "chainId": "7290172900007",
       "source": "pages",
+      "israel": true,
       "pages": [
         "https://prices.super-pharm.co.il/?Category-equals=Stores",
         "https://prices.super-pharm.co.il/?Category-equals=PriceFull&Date-equals={dmy}&page={page}"
@@ -297,6 +303,7 @@
       "name": "משנת יוסף (ק.ט.)",
       "chainId": "5144744100002",
       "source": "pages",
+      "israel": true,
       "pages": [
         "https://list-files.w5871031-kt.workers.dev/"
       ],
