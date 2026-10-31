@@ -13,7 +13,7 @@ import { Client } from 'basic-ftp';
 import { XMLParser } from 'fast-xml-parser';
 import fs from 'node:fs/promises';
 import { PassThrough } from 'node:stream';
-import { gunzipSync } from 'node:zlib';
+import { gunzipSync, inflateRawSync } from 'node:zlib';
 
 const config = JSON.parse(await fs.readFile(new URL('./config.json', import.meta.url), 'utf8'));
 const OUT = new URL('./out/', import.meta.url);
@@ -29,9 +29,14 @@ const xml = new XMLParser({
   transformTagName: (name) => name.toLowerCase().replace(/^.*:/, ''),
 });
 
-/** A downloaded file as text: unzipped if needed, UTF-8 or UTF-16. */
+/** A downloaded file as text: unzipped if needed (gzip, or zip like K.T.'s), UTF-8 or UTF-16. */
 function toText(buffer) {
-  const data = buffer[0] === 0x1f && buffer[1] === 0x8b ? gunzipSync(buffer) : buffer;
+  let data = buffer;
+  if (buffer[0] === 0x1f && buffer[1] === 0x8b) data = gunzipSync(buffer);
+  // A zip's first file: it starts after its 30-byte header, name and extra field.
+  if (buffer[0] === 0x50 && buffer[1] === 0x4b) {
+    data = inflateRawSync(buffer.subarray(30 + buffer.readUInt16LE(26) + buffer.readUInt16LE(28)));
+  }
   if (data[0] === 0xff && data[1] === 0xfe) return data.subarray(2).toString('utf16le');
   return data.toString('utf8').replace(/^﻿/, '');
 }
