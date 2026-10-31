@@ -33,3 +33,11 @@ whose branches have no city (code 0) can list branches by number instead, in its
 can be placed by hand in `"locations"` (branch id → [latitude, longitude]), and
 each chain's `"mapNames"` are the names its stores have on OpenStreetMap. Then
 on GitHub: **Actions → Prices → Run workflow**, or wait for the next night.
+
+The chains and their logins come from the Consumer Protection Authority's list,
+https://www.gov.il/he/pages/cpfta_prices_regulations. Chains on the shared
+Cerberus server (`"source": "cerberus"`) use the user name and password listed
+there; `"folder"` is for a chain that keeps its files in a folder (Super Yuda).
+Not read yet: Dor Alon (its server sends files from a second address), and the
+chains on other sites (Carrefour, Victory, Hazi Hinam, the binaprojects sites
+and others).

@@ -44,7 +44,8 @@
     },
     {
       "name": "קרית חיים",
-      "codes": []
+      "codes": [],
+      "partOf": "חיפה"
     }
   ],
   "chains": [
@@ -101,6 +102,109 @@
         "7": "עין המפרץ",
         "19": "חיפה"
       }
+    },
+    {
+      "key": "tiv-taam",
+      "name": "טיב טעם",
+      "chainId": "7290873255550",
+      "source": "cerberus",
+      "username": "TivTaam",
+      "password": "",
+      "mapNames": [
+        "טיב טעם",
+        "Tiv Taam"
+      ]
+    },
+    {
+      "key": "yohananof",
+      "name": "יוחננוף",
+      "chainId": "7290803800003",
+      "source": "cerberus",
+      "username": "yohananof",
+      "password": "",
+      "branches": {
+        "13": "חיפה"
+      },
+      "mapNames": [
+        "יוחננוף",
+        "Yochananof",
+        "Yohananof"
+      ]
+    },
+    {
+      "key": "stop-market",
+      "name": "סטופ מרקט",
+      "chainId": "7290639000004",
+      "source": "cerberus",
+      "username": "Stop_Market",
+      "password": "",
+      "mapNames": [
+        "סטופ מרקט",
+        "Stop Market"
+      ]
+    },
+    {
+      "key": "politzer",
+      "name": "פוליצר",
+      "chainId": "7291059100008",
+      "source": "cerberus",
+      "username": "politzer",
+      "password": "",
+      "mapNames": [
+        "פוליצר",
+        "Politzer"
+      ]
+    },
+    {
+      "key": "paz-yellow",
+      "name": "יילו (פז)",
+      "chainId": "7290644700005",
+      "source": "cerberus",
+      "username": "Paz_bo",
+      "password": "paz468",
+      "mapNames": [
+        "יילו",
+        "Yellow"
+      ]
+    },
+    {
+      "key": "super-yuda",
+      "name": "סופר יודה",
+      "chainId": "7290058177776",
+      "source": "cerberus",
+      "username": "yuda_ho",
+      "password": "Yud@147",
+      "folder": "Yuda",
+      "mapNames": [
+        "סופר יודה",
+        "Super Yuda"
+      ]
+    },
+    {
+      "key": "freshmarket",
+      "name": "פרשמרקט",
+      "chainId": "7290876100000",
+      "source": "cerberus",
+      "username": "freshmarket",
+      "password": "",
+      "mapNames": [
+        "פרשמרקט",
+        "פרש מרקט",
+        "Freshmarket",
+        "Fresh Market"
+      ]
+    },
+    {
+      "key": "keshet",
+      "name": "קשת טעמים",
+      "chainId": "7290785400000",
+      "source": "cerberus",
+      "username": "Keshet",
+      "password": "",
+      "mapNames": [
+        "קשת טעמים",
+        "Keshet"
+      ]
     }
   ],
   "locations": {

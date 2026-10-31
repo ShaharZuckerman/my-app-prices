@@ -139,7 +139,9 @@ const shufersal = {
   close() {},
 };
 
-// ---- Cerberus: the shared server (Rami Levy, Osher Ad, Salach Dabach) --------
+// ---- Cerberus: the shared server most chains use -------------------------------
+// Each chain logs in with the user name and password gov.il lists for it. A few
+// keep their files in a folder ("folder" in config.json).
 
 async function cerberus(chain) {
   const client = new Client(60_000);
@@ -149,7 +151,8 @@ async function cerberus(chain) {
     password: chain.password,
     secure: false,
   });
-  const names = (await client.list('/')).map((file) => file.name);
+  const folder = chain.folder ? `/${chain.folder}/` : '/';
+  const names = (await client.list(folder)).map((file) => file.name);
   console.log(`  ${names.length} files on the server`);
   // For report.json: what the files are called (to see why a branch's file isn't found).
   chain.fileSample = {
@@ -164,7 +167,7 @@ async function cerberus(chain) {
     const chunks = [];
     const sink = new PassThrough();
     sink.on('data', (chunk) => chunks.push(chunk));
-    await client.downloadTo(sink, name);
+    await client.downloadTo(sink, `${folder}${name}`);
     return Buffer.concat(chunks);
   }
 
@@ -230,18 +233,28 @@ function cleanAddress(address) {
 function addressVariants(address, city) {
   let base = address
     .replace(/&#x?[0-9a-f]+;/gi, ' ') // leftover codes like &#x0D;
+    .replace(/[(,].*$/, '') // "עין דור 16 (רחוב הבנקים)", "אליהו חכים 1,כרמל צרפתי"
     .replace(/([א-ת])(\d)/g, '$1 $2') // "ורדיה10"
-    .replace(/(\d+)\s+[א-ת]{1,3}\.?\s*$/, '$1') // "124 מר" (מרכז)
+    .replace(/^(\d+)\s+(.+)$/, '$2 $1') // "196 דרך יפו"
     .replace(/\s+/g, ' ')
     .trim();
-  // The city inside the address ("נשר המרגנית 1"): searched in that city.
+  // The city inside the address ("נשר המרגנית 1", "הלחי 8 טירת הכרמל"): searched in that city.
   let where = city;
   for (const { name } of config.cities) {
-    if (base.startsWith(`${name} `)) {
+    // "טירת כרמל" is also written "טירת הכרמל", "קרית" also "קריית".
+    const spellings = name
+      .split(' ')
+      .map((word, index) => (index ? `ה?${word}` : word.replace('קרית', 'קרי?ית')))
+      .join(' ');
+    const inside = base.match(new RegExp(`^(${spellings})\\s|\\s(${spellings})$`));
+    if (inside) {
       where = name;
-      base = base.slice(name.length).trim();
+      base = base.replace(inside[0], ' ').trim();
     }
   }
+  base = base.replace(/(\d+)\s+[א-ת]{1,3}\.?\s*$/, '$1'); // "124 מר" (מרכז)
+  // A city the map counts as part of another ("קרית חיים" is in Haifa): both are tried.
+  const alsoIn = config.cities.find((each) => each.name === where)?.partOf;
   const number = base.match(/\d+\s*$/)?.[0] ?? '';
   const streets = [];
   for (const part of base.split('/')) {
@@ -259,7 +272,7 @@ function addressVariants(address, city) {
   }
   return [...new Set(streets.map((street) => street.trim()))]
     .filter((street) => /[א-ת]{2}/.test(street))
-    .map((street) => `${street}, ${where}`);
+    .flatMap((street) => [`${street}, ${where}`, ...(alsoIn ? [`${street}, ${alsoIn}`] : [])]);
 }
 
 /** The distance between two places, in km (as the crow flies). */
@@ -291,8 +304,13 @@ function nearestChainStore(chain, place, maxKm) {
 
 // Words in branch names that aren't a place: the chains' brands and kinds of store.
 // Whole words only ("יש" goes, "ישראל" stays).
-const NotAPlace =
-  /(^|[\s-])(שופרסל|רמי לוי|אושר עד|סאלח דבאח|שלי|דיל|אקספרס|אקסטרה|יש|online|אונליין)(?=[\s-]|$)/gi;
+const NotAPlace = new RegExp(
+  `(^|[\\s-])(${[
+    ...config.chains.flatMap((chain) => [chain.name, ...(chain.mapNames ?? [])]),
+    ...['שלי', 'דיל', 'אקספרס', 'אקסטרה', 'יש', 'online', 'אונליין', 'סופר', 'מרקט'],
+  ].join('|')})(?=[\\s-]|$)`,
+  'gi'
+);
 
 /**
  * The place in a branch's name, "שופרסל שלי חיפה- ורדיה" → "ורדיה",
@@ -304,7 +322,7 @@ function placeInName(entry) {
   for (const city of [entry.city, ...config.cities.map((each) => each.name)]) {
     words = words.replaceAll(city, ' ');
   }
-  return cleanAddress(words.replace(/[-–,]/g, ' '));
+  return cleanAddress(words.replace(/\(.*?\)/g, ' ').replace(/[-–,]/g, ' '));
 }
 
 /**
@@ -312,10 +330,11 @@ function placeInName(entry) {
  *   'manual'   set by hand in config.json ("locations": { "<branch id>": [lat, lng] });
  *   'address'  its address (as written, then the ways addressVariants writes it),
  *              kept from last night once found;
- *   'store'    the place in its name (a neighborhood or street), then the chain's
- *              store on the map nearest to it (also kept from last night);
- *   'area'     just the place in its name (tried again next night);
- *   'city'     the city center (tried again next night).
+ *   'store'    its street without the house number, or the place in its name (a
+ *              neighborhood or street), then the chain's store on the map nearest
+ *              to it (also kept from last night);
+ *   'area'     just that street or place (tried again next night);
+ *   'unknown'  not found: no coordinates (tried again next night).
  * An address found is also snapped to the chain's store on the map, when one is close.
  */
 async function locate(entry, chain) {
@@ -335,13 +354,20 @@ async function locate(entry, chain) {
     }
   }
   const place = placeInName(entry);
-  const area = place ? await findOnMap(`${place}, ${entry.city}`) : null;
+  // The map may know the street but not the house number: the street alone, else the place in the name.
+  const streets = tries.map((each) => each.replace(/\s+\d+[א-ת]?(?=,)/, '')).filter((each) => !tries.includes(each));
+  let area = null;
+  for (const each of new Set([...streets, ...(place ? [`${place}, ${entry.city}`] : [])])) {
+    area = await findOnMap(each);
+    if (area) break;
+  }
   if (area) {
     const store = nearestChainStore(chain, area, SnapKm.area);
     return store ? { ...store, located: 'store' } : { ...area, located: 'area' };
   }
-  const city = await findOnMap(entry.city);
-  return city ? { ...city, located: 'city' } : {};
+  // Not found (e.g. "כביש חיפה - תל אביב ביציאה מחיפה"): no place rather than the city
+  // center, which would put a wrong pin on the map. Can be added in "locations".
+  return { located: 'unknown' };
 }
 
 // ---- Every grocery on the map (for "Groceries near me" in the app) -----------
@@ -536,7 +562,7 @@ await fs.writeFile(
 );
 report.groceries = { count: osmShops.length, fresh: foundShops !== null };
 report.located = Object.fromEntries(
-  ['manual', 'address', 'store', 'area', 'city'].map((how) => [
+  ['manual', 'address', 'store', 'area', 'unknown'].map((how) => [
     how,
     stores.filter((store) => store.located === how).map((store) => `${store.id} · ${store.name}`),
   ])
