@@ -1,20 +1,64 @@
 {
   "cities": [
-    { "name": "חיפה", "codes": ["4000"] },
-    { "name": "קרית אתא", "codes": ["6800"] },
-    { "name": "נשר", "codes": ["2500"] },
-    { "name": "טירת כרמל", "codes": ["2100"] },
-    { "name": "קרית ביאליק", "codes": ["9500"] },
-    { "name": "קרית מוצקין", "codes": ["8200"] },
-    { "name": "קרית ים", "codes": ["9600"] },
-    { "name": "קרית חיים", "codes": [] }
+    {
+      "name": "חיפה",
+      "codes": [
+        "4000"
+      ]
+    },
+    {
+      "name": "קרית אתא",
+      "codes": [
+        "6800"
+      ]
+    },
+    {
+      "name": "נשר",
+      "codes": [
+        "2500"
+      ]
+    },
+    {
+      "name": "טירת כרמל",
+      "codes": [
+        "2100"
+      ]
+    },
+    {
+      "name": "קרית ביאליק",
+      "codes": [
+        "9500"
+      ]
+    },
+    {
+      "name": "קרית מוצקין",
+      "codes": [
+        "8200"
+      ]
+    },
+    {
+      "name": "קרית ים",
+      "codes": [
+        "9600"
+      ]
+    },
+    {
+      "name": "קרית חיים",
+      "codes": []
+    }
   ],
   "chains": [
     {
       "key": "shufersal",
       "name": "שופרסל",
       "chainId": "7290027600007",
-      "source": "shufersal"
+      "source": "shufersal",
+      "mapNames": [
+        "שופרסל",
+        "Shufersal",
+        "שופרשל",
+        "יוניברס"
+      ]
     },
     {
       "key": "rami-levy",
@@ -22,7 +66,11 @@
       "chainId": "7290058140886",
       "source": "cerberus",
       "username": "RamiLevi",
-      "password": ""
+      "password": "",
+      "mapNames": [
+        "רמי לוי",
+        "Rami Levy"
+      ]
     },
     {
       "key": "osher-ad",
@@ -30,7 +78,11 @@
       "chainId": "7290103152017",
       "source": "cerberus",
       "username": "osherad",
-      "password": ""
+      "password": "",
+      "mapNames": [
+        "אושר עד",
+        "Osher Ad"
+      ]
     },
     {
       "key": "salach-dabach",
@@ -39,7 +91,22 @@
       "source": "cerberus",
       "username": "SalachD",
       "password": "12345",
-      "branches": { "7": "עין המפרץ", "19": "חיפה" }
+      "mapNames": [
+        "דבאח",
+        "סאלח דבאח",
+        "Dabah",
+        "Dabbah"
+      ],
+      "branches": {
+        "7": "עין המפרץ",
+        "19": "חיפה"
+      }
     }
-  ]
+  ],
+  "locations": {
+    "salach-dabach-19": [
+      32.79015,
+      35.02863
+    ]
+  }
 }

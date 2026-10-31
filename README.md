@@ -14,15 +14,22 @@ The app reads `stores.json` and the files in `prices/` from the `data` branch.
 
 ## Files on the `data` branch
 
-- `stores.json`: the branches, with their chain, name, city and address.
+- `stores.json`: the branches, with their chain, name, city, address and place on
+  the map (`located` says how it was found: by address, or set by hand).
 - `prices/<branch id>.json`: one branch's products, each as
   `[barcode, name, maker, price, amount, unit, price per unit, by weight (1/0)]`.
 - `report.json`: every city each chain lists, how many branches were kept, and
-  any errors. Use it to adjust the city names in `config.json`.
+  any errors. Use it to adjust the city names in `config.json`. Its `located`
+  lists which branches were placed how.
+- `groceries.json`: every grocery in Israel that OpenStreetMap knows of
+  (supermarkets, minimarkets, greengrocers, butchers, delis), asked once a night,
+  for the app's map. Also used to put branches exactly on their store.
 
 ## Changing the cities or chains
 
 Edit `config.json` (city names in Hebrew, with their official city codes). A chain
 whose branches have no city (code 0) can list branches by number instead, in its
-`"branches"` (branch number → city). Then
+`"branches"` (branch number → city). A branch the map can't find by its address
+can be placed by hand in `"locations"` (branch id → [latitude, longitude]), and
+each chain's `"mapNames"` are the names its stores have on OpenStreetMap. Then
 on GitHub: **Actions → Prices → Run workflow**, or wait for the next night.

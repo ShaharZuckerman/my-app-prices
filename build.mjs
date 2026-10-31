@@ -222,21 +222,181 @@ function cleanAddress(address) {
 }
 
 /**
- * A branch's coordinates: kept from last night if found by address, otherwise
- * looked up by its address (as written, then cleaned up), or by its city when
- * the address isn't found (located: 'city' = the city center; tried again next night).
+ * Ways to write a chain's address that the map search may understand, best
+ * first, each with its city: "ורדיה10" → "ורדיה 10", "שד' הנשיא 124 מר" →
+ * "שדרות הנשיא 124", "כצנלסון/מנדל 67" → each street, "ד.ויצמן 1" → "דרך
+ * ויצמן 1" or "שדרות ויצמן 1", "נשר המרגנית 1" → "המרגנית 1" in Nesher.
  */
-async function locate(entry) {
+function addressVariants(address, city) {
+  let base = address
+    .replace(/&#x?[0-9a-f]+;/gi, ' ') // leftover codes like &#x0D;
+    .replace(/([א-ת])(\d)/g, '$1 $2') // "ורדיה10"
+    .replace(/(\d+)\s+[א-ת]{1,3}\.?\s*$/, '$1') // "124 מר" (מרכז)
+    .replace(/\s+/g, ' ')
+    .trim();
+  // The city inside the address ("נשר המרגנית 1"): searched in that city.
+  let where = city;
+  for (const { name } of config.cities) {
+    if (base.startsWith(`${name} `)) {
+      where = name;
+      base = base.slice(name.length).trim();
+    }
+  }
+  const number = base.match(/\d+\s*$/)?.[0] ?? '';
+  const streets = [];
+  for (const part of base.split('/')) {
+    const withNumber = (/\d/.test(part) ? part : `${part} ${number}`).trim();
+    // "ד." is "דרך" or "שדרות": both are tried.
+    const short = withNumber.match(/^ד\.\s*(.*)$/);
+    const names = short
+      ? [`דרך ${cleanAddress(short[1])}`, `שדרות ${cleanAddress(short[1])}`]
+      : [cleanAddress(withNumber)];
+    for (const name of names) {
+      const bare = name.replace(/^(דרך|שדרות)\s+/, '');
+      // The map's spelling may differ: "וולנברג" / "ולנברג", "הדולפין" / "דולפין".
+      streets.push(name, bare, bare.replace(/וו/g, 'ו'), bare.replace(/^ה/, ''));
+    }
+  }
+  return [...new Set(streets.map((street) => street.trim()))]
+    .filter((street) => /[א-ת]{2}/.test(street))
+    .map((street) => `${street}, ${where}`);
+}
+
+/** The distance between two places, in km (as the crow flies). */
+function kmBetween(a, b) {
+  const rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad;
+  const dLng = (b.lng - a.lng) * rad;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(h));
+}
+
+// How far from a branch's address, or from the neighborhood or street in its name,
+// its chain's store on the map may be (to put the branch exactly on it).
+const SnapKm = { address: 0.3, area: 1.5 };
+
+/** The chain's store on the map (groceries.json) nearest to a place, if one is within maxKm. */
+function nearestChainStore(chain, place, maxKm) {
+  const names = (chain.mapNames ?? [chain.name]).map((name) => name.toLowerCase());
+  let best = null;
+  for (const shop of osmShops) {
+    if (!names.some((name) => shop.names.includes(name))) continue;
+    const km = kmBetween(place, shop);
+    if (km <= maxKm && (!best || km < best.km)) best = { lat: shop.lat, lng: shop.lng, km };
+  }
+  return best && { lat: best.lat, lng: best.lng };
+}
+
+// Words in branch names that aren't a place: the chains' brands and kinds of store.
+// Whole words only ("יש" goes, "ישראל" stays).
+const NotAPlace =
+  /(^|[\s-])(שופרסל|רמי לוי|אושר עד|סאלח דבאח|שלי|דיל|אקספרס|אקסטרה|יש|online|אונליין)(?=[\s-]|$)/gi;
+
+/**
+ * The place in a branch's name, "שופרסל שלי חיפה- ורדיה" → "ורדיה",
+ * "שופרסל דיל קרית מוצקין-שד ויצמן" → "שדרות ויצמן" (without the chain, the kind
+ * of store and the city).
+ */
+function placeInName(entry) {
+  let words = entry.name.replace(NotAPlace, '$1 ');
+  for (const city of [entry.city, ...config.cities.map((each) => each.name)]) {
+    words = words.replaceAll(city, ' ');
+  }
+  return cleanAddress(words.replace(/[-–,]/g, ' '));
+}
+
+/**
+ * A branch's coordinates (located: how they were found), trying in order:
+ *   'manual'   set by hand in config.json ("locations": { "<branch id>": [lat, lng] });
+ *   'address'  its address (as written, then the ways addressVariants writes it),
+ *              kept from last night once found;
+ *   'store'    the place in its name (a neighborhood or street), then the chain's
+ *              store on the map nearest to it (also kept from last night);
+ *   'area'     just the place in its name (tried again next night);
+ *   'city'     the city center (tried again next night).
+ * An address found is also snapped to the chain's store on the map, when one is close.
+ */
+async function locate(entry, chain) {
+  const manual = config.locations?.[entry.id];
+  if (manual) return { lat: manual[0], lng: manual[1], located: 'manual' };
   const last = previous.stores.find((store) => store.id === entry.id);
-  if (last?.located === 'address') return { lat: last.lat, lng: last.lng, located: 'address' };
+  if (last?.located === 'address' || last?.located === 'store') {
+    return { lat: last.lat, lng: last.lng, located: last.located };
+  }
   const address = entry.address && !/unknown/i.test(entry.address) ? entry.address : '';
-  const tries = [...new Set([address, cleanAddress(address)])].filter(Boolean);
-  for (const each of tries) {
-    const exact = await findOnMap(`${each}, ${entry.city}`);
-    if (exact) return { ...exact, located: 'address' };
+  const tries = address ? [`${address}, ${entry.city}`, ...addressVariants(address, entry.city)] : [];
+  for (const each of new Set(tries)) {
+    const exact = await findOnMap(each);
+    if (exact) {
+      const store = nearestChainStore(chain, exact, SnapKm.address);
+      return { ...(store ?? exact), located: 'address' };
+    }
+  }
+  const place = placeInName(entry);
+  const area = place ? await findOnMap(`${place}, ${entry.city}`) : null;
+  if (area) {
+    const store = nearestChainStore(chain, area, SnapKm.area);
+    return store ? { ...store, located: 'store' } : { ...area, located: 'area' };
   }
   const city = await findOnMap(entry.city);
   return city ? { ...city, located: 'city' } : {};
+}
+
+// ---- Every grocery on the map (for "Groceries near me" in the app) -----------
+
+// OpenStreetMap's shop search (Overpass). The main server first, then a mirror.
+const ShopSearch = [
+  'https://overpass-api.de/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+];
+const ShopKinds = ['supermarket', 'convenience', 'greengrocer', 'butcher', 'deli'];
+
+/**
+ * Every grocery in Israel that OpenStreetMap knows of: supermarkets,
+ * minimarkets, greengrocers, butchers and delis. Asked once a night, so the
+ * app doesn't wait for the (often busy) server. Null if no server answered.
+ */
+async function findShops() {
+  const query =
+    '[out:json][timeout:300];area["ISO3166-1"="IL"][admin_level=2]->.il;' +
+    `nwr["shop"~"^(${ShopKinds.join('|')})$"](area.il);out center tags;`;
+  for (const server of ShopSearch) {
+    try {
+      const response = await fetch(server, {
+        method: 'POST',
+        body: new URLSearchParams({ data: query }),
+        headers: { 'User-Agent': 'my-app-prices (github.com/ShaharZuckerman/my-app-prices)' },
+        signal: AbortSignal.timeout(360_000),
+      });
+      if (!response.ok) throw new Error(`${response.status}`);
+      const result = await response.json();
+      if (result.remark) throw new Error(result.remark);
+      return result.elements.flatMap((element) => {
+        const lat = element.lat ?? element.center?.lat;
+        const lng = element.lon ?? element.center?.lon;
+        if (lat === undefined || lng === undefined) return [];
+        const tags = element.tags ?? {};
+        const street = [tags['addr:street'], tags['addr:housenumber']].filter(Boolean).join(' ');
+        return [{
+          lat: +lat.toFixed(5),
+          lng: +lng.toFixed(5),
+          kind: tags.shop,
+          name: tags['name:he'] || tags.name || '',
+          address: [street, tags['addr:city']].filter(Boolean).join(', '),
+          // Every name and brand it has, to recognize the chains' stores.
+          names: ['name', 'name:he', 'name:en', 'brand', 'brand:he', 'brand:en']
+            .map((key) => tags[key] ?? '')
+            .join(' | ')
+            .toLowerCase(),
+        }];
+      });
+    } catch (error) {
+      console.log(`  ✗ ${server}: ${error.message}`);
+    }
+  }
+  return null;
 }
 
 // ---- Putting it together --------------------------------------------------
@@ -250,6 +410,20 @@ const previous = JSON.parse(
 
 await fs.rm(OUT, { recursive: true, force: true });
 await fs.mkdir(new URL('./prices/', OUT), { recursive: true });
+
+// The groceries on the map first (they help place the branches). If no server
+// answers tonight, last night's list is used.
+console.log('Groceries on the map (OpenStreetMap)');
+const previousShops = JSON.parse(
+  await fs.readFile(new URL('./groceries.json', PREVIOUS), 'utf8').catch(() => '{"shops":[]}')
+);
+const foundShops = await findShops();
+const osmShops =
+  foundShops ??
+  previousShops.shops.map(([lat, lng, kind, name, address, names]) => ({
+    lat, lng, kind, name, address, names,
+  }));
+console.log(`  ${osmShops.length} groceries${foundShops ? '' : ' (from last night)'}`);
 
 const stores = [];
 const report = { builtAt: new Date().toISOString(), chains: {} };
@@ -305,7 +479,7 @@ for (const chain of config.chains) {
         city: cityOf(branch) ?? extra[branch.storeId],
         address: branch.address,
       };
-      Object.assign(entry, await locate(entry).catch(() => ({})));
+      Object.assign(entry, await locate(entry, chain).catch(() => ({})));
       try {
         const { items, file } = await source.prices(branch);
         await fs.writeFile(new URL(`./prices/${id}.json`, OUT), JSON.stringify(items));
@@ -348,6 +522,24 @@ await fs.writeFile(
 await fs.writeFile(
   new URL('./catalog.json', OUT),
   JSON.stringify({ builtAt: report.builtAt, products: [...catalog.values()] })
+);
+// The groceries on the map: [lat, lng, kind (supermarket, convenience…), name,
+// address, every name and brand (lowercase, " | " between them)].
+await fs.writeFile(
+  new URL('./groceries.json', OUT),
+  JSON.stringify({
+    builtAt: foundShops ? report.builtAt : previousShops.builtAt,
+    shops: osmShops.map(({ lat, lng, kind, name, address, names }) => [
+      lat, lng, kind, name, address, names,
+    ]),
+  })
+);
+report.groceries = { count: osmShops.length, fresh: foundShops !== null };
+report.located = Object.fromEntries(
+  ['manual', 'address', 'store', 'area', 'city'].map((how) => [
+    how,
+    stores.filter((store) => store.located === how).map((store) => `${store.id} · ${store.name}`),
+  ])
 );
 await fs.writeFile(new URL('./report.json', OUT), JSON.stringify(report, null, 1));
 console.log(`\nDone: ${stores.length} branches with prices.`);
