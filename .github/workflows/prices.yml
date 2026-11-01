@@ -5,10 +5,10 @@ name: Prices
 
 on:
   schedule:
-    # 05:00 UTC = 07:00/08:00 in Israel, after the chains publish their morning files
-    # (full prices at about 05:00-05:20, branch lists by 06:00; some sites list
-    # only today's files).
-    - cron: '0 5 * * *'
+    # 04:17 UTC = 06:17/07:17 in Israel, after the chains publish their morning full
+    # price files (about 05:00-05:20). Not on the hour: GitHub delays scheduled runs
+    # most then.
+    - cron: '17 4 * * *'
   push:
     branches: [main]
   workflow_dispatch:

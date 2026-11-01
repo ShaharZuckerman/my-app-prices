@@ -148,28 +148,44 @@ async function download(url) {
 }
 
 /** The download links on a Shufersal listing page (category 5 = branches, 2 = full prices). */
-async function shufersalLinks(category, storeId) {
-  const query = new URLSearchParams({ catID: String(category) });
-  if (storeId) query.set('storeId', storeId);
-  const page = (await download(`${ShufersalSite}FileObject/UpdateCategory?${query}`)).toString();
-  return [...page.matchAll(/href="(https:\/\/[^"]+\.blob\.core\.windows\.net[^"]+)"/g)].map(
+async function shufersalLinks(category, page = 1) {
+  const query = new URLSearchParams({ catID: String(category), page: String(page) });
+  const html = (await download(`${ShufersalSite}FileObject/UpdateCategory?${query}`)).toString();
+  return [...html.matchAll(/href="(https:\/\/[^"]+\.blob\.core\.windows\.net[^"]+)"/g)].map(
     (match) => match[1].replace(/&amp;/g, '&')
   );
 }
 
-const shufersal = {
-  async stores() {
-    const [link] = (await shufersalLinks(5)).filter((url) => /Stores/i.test(url));
-    if (!link) throw new Error('no branches file on the Shufersal site');
-    return readStores(toText(await download(link)));
-  },
-  async prices(store) {
-    const [link] = (await shufersalLinks(2, store.storeId)).filter((url) => /PriceFull/i.test(url));
-    if (!link) throw new Error(`no full price file for branch ${store.storeId}`);
-    return { items: readPrices(toText(await download(link))), file: link.split('?')[0].split('/').pop() };
-  },
-  close() {},
-};
+function shufersal(chain) {
+  // Every branch's full price file: listed 20 a page (about 22 pages), read once.
+  let fullPrices = null;
+  async function listFullPrices() {
+    const links = new Map();
+    for (let page = 1; page <= MaxPages; page++) {
+      const before = links.size;
+      for (const link of await shufersalLinks(2, page)) {
+        links.set(link.split('?')[0].split('/').pop(), link);
+      }
+      if (links.size === before) break;
+    }
+    return links;
+  }
+  return {
+    async stores() {
+      const [link] = (await shufersalLinks(5)).filter((url) => /Stores/i.test(url));
+      if (!link) throw new Error('no branches file on the Shufersal site');
+      return readStores(toText(await download(link)));
+    },
+    async prices(store) {
+      fullPrices ??= listFullPrices();
+      const links = await fullPrices;
+      const name = newestPriceFull([...links.keys()], chain, store);
+      if (!name) throw new Error(`no full price file for branch ${store.storeId}`);
+      return { items: readPrices(toText(await download(links.get(name)))), file: name };
+    },
+    close() {},
+  };
+}
 
 /**
  * The newest full price file of a branch, from a list of file names, e.g.
@@ -200,7 +216,7 @@ async function carrefour(chain) {
     for (const { name } of files) links.set(name, `${CarrefourSite}${path}/${name}`);
   }
   const names = [...links.keys()];
-  console.log(`  ${names.length} files on the site`);
+  console.log(`${chain.key}: ${names.length} files on the site`);
   return {
     async stores() {
       const name = names.filter((each) => each.startsWith(`Stores${chain.chainId}`)).sort().at(-1);
@@ -225,7 +241,7 @@ async function laibcatalog(chain) {
     (await download(`${LaibCatalog}api/getfiles?edi=${chain.chainId}`)).toString()
   );
   const names = files.map((file) => file.fileName);
-  console.log(`  ${names.length} files on the site`);
+  console.log(`${chain.key}: ${names.length} files on the site`);
   const link = (name) => `${LaibCatalog}${chain.chainId}/${encodeURIComponent(name)}`;
   return {
     async stores() {
@@ -278,7 +294,7 @@ async function linkPages(chain) {
     }
   }
   const names = [...links.keys()];
-  console.log(`  ${names.length} files on the site`);
+  console.log(`${chain.key}: ${names.length} files on the site`);
   return {
     async stores() {
       const pattern = new RegExp(`^Stores(Full)?${chain.chainId}`);
@@ -309,7 +325,7 @@ async function cerberus(chain) {
   });
   const folder = chain.folder ? `/${chain.folder}/` : '/';
   const names = (await client.list(folder)).map((file) => file.name);
-  console.log(`  ${names.length} files on the server`);
+  console.log(`${chain.key}: ${names.length} files on the server`);
   // For report.json: what the files are called (to see why a branch's file isn't found).
   chain.fileSample = {
     total: names.length,
@@ -346,7 +362,7 @@ async function cerberus(chain) {
 
 // Each chain's "source" in config.json: how its files are read.
 const Sources = {
-  shufersal: () => shufersal,
+  shufersal,
   carrefour,
   laibcatalog,
   pages: linkPages,
@@ -378,23 +394,33 @@ let searchedMs = 0;
  */
 async function findOnMap(query, city) {
   const center = city ? await cityCenter(city) : null;
-  if (searchedMs > SearchForMs) return null;
-  const started = Date.now();
-  try {
-    await pause(1100);
-    const url = `${MapSearch}?format=json&limit=5&countrycodes=il&q=${encodeURIComponent(query)}`;
-    const response = await fetch(url, {
-      headers: { 'User-Agent': 'my-app-prices (github.com/ShaharZuckerman/my-app-prices)' },
-    });
-    if (!response.ok) return null;
-    const places = (await response.json()).map((place) => ({
-      lat: +(+place.lat).toFixed(5),
-      lng: +(+place.lon).toFixed(5),
-    }));
-    return places.find((place) => !center || kmBetween(center, place) <= CityKm) ?? null;
-  } finally {
-    searchedMs += Date.now() - started;
-  }
+  return inTurn(async () => {
+    if (searchedMs > SearchForMs) return null;
+    const started = Date.now();
+    try {
+      await pause(1100);
+      const url = `${MapSearch}?format=json&limit=5&countrycodes=il&q=${encodeURIComponent(query)}`;
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'my-app-prices (github.com/ShaharZuckerman/my-app-prices)' },
+      });
+      if (!response.ok) return null;
+      const places = (await response.json()).map((place) => ({
+        lat: +(+place.lat).toFixed(5),
+        lng: +(+place.lon).toFixed(5),
+      }));
+      return places.find((place) => !center || kmBetween(center, place) <= CityKm) ?? null;
+    } finally {
+      searchedMs += Date.now() - started;
+    }
+  });
+}
+
+// Several chains are read at once, but the searches wait for each other (one a second).
+let searchTurn = Promise.resolve();
+function inTurn(work) {
+  const turn = searchTurn.then(work);
+  searchTurn = turn.catch(() => {});
+  return turn;
 }
 
 /** A city's center (searched for once, then kept; null if the map doesn't know it). */
@@ -587,7 +613,7 @@ const ShopKinds = ['supermarket', 'convenience', 'greengrocer', 'butcher', 'deli
  */
 async function findShops() {
   const query =
-    '[out:json][timeout:300];area["ISO3166-1"="IL"][admin_level=2]->.il;' +
+    '[out:json][timeout:180];area["ISO3166-1"="IL"][admin_level=2]->.il;' +
     `nwr["shop"~"^(${ShopKinds.join('|')})$"](area.il);out center tags;`;
   for (const server of ShopSearch) {
     try {
@@ -595,7 +621,7 @@ async function findShops() {
         method: 'POST',
         body: new URLSearchParams({ data: query }),
         headers: { 'User-Agent': 'my-app-prices (github.com/ShaharZuckerman/my-app-prices)' },
-        signal: AbortSignal.timeout(360_000),
+        signal: AbortSignal.timeout(200_000),
       });
       if (!response.ok) throw new Error(`${response.status}`);
       const result = await response.json();
@@ -635,6 +661,9 @@ async function findShops() {
 const RunAt = process.env.RUN_AT ?? 'all';
 const readsChain = (chain) =>
   RunAt === 'github' ? !chain.israel : RunAt === 'home' ? Boolean(chain.israel) : true;
+// After this long (minutes), the branches not read yet keep last time's prices, so
+// the files are always published (GitHub stops a run after 2 hours).
+const ReadUntil = Date.now() + Number(process.env.READ_MINUTES ?? 75) * 60_000;
 
 // Last time's files (the data branch, put in ./previous by the workflow and by
 // run-at-home.cmd): places already found, and prices for branches not read this time.
@@ -768,8 +797,7 @@ function addToOldFiles(entry, items) {
 
 // ---- Every chain -------------------------------------------------------------
 
-for (const chain of config.chains) {
-  console.log(`\n${chain.name} (${chain.key})`);
+async function readChain(chain) {
   const chainReport = { branches: 0, read: 0, citiesSeen: {}, errors: [] };
   report.chains[chain.key] = chainReport;
   const chainData = newChain();
@@ -780,13 +808,13 @@ for (const chain of config.chains) {
       if (await keepLastPrices(chainData, last)) kept++;
     }
     chainReport.kept = kept;
-    console.log(`  ${reason}: kept ${kept} branches from last time`);
+    console.log(`${chain.key}: ${reason}, kept ${kept} branches from last time`);
   };
   let source;
   try {
     if (!readsChain(chain)) {
       await keepChain(chain.israel ? 'read at home' : 'read on GitHub');
-      continue;
+      return;
     }
     source = await Sources[chain.source](chain);
     const found = await source.stores();
@@ -802,7 +830,7 @@ for (const chain of config.chains) {
     chainReport.unknownCity = found
       .filter((branch) => !city(branch))
       .map((branch) => `${branch.storeId} · ${branch.name} · ${branch.address}`);
-    console.log(`  ${found.length} branches`);
+    console.log(`${chain.key}: ${found.length} branches`);
 
     for (const branch of found) {
       const id = `${chain.key}-${branch.storeId}`;
@@ -816,6 +844,7 @@ for (const chain of config.chains) {
       };
       Object.assign(entry, await locate(entry, chain).catch(() => ({ located: 'unknown' })));
       try {
+        if (Date.now() > ReadUntil) throw new Error('out of time this run');
         const { items, file } = await source.prices(branch);
         addBranch(
           chainData,
@@ -839,7 +868,7 @@ for (const chain of config.chains) {
         );
       }
     }
-    console.log(`  ✓ ${chainReport.read} branches read, ${chainReport.errors.length} not`);
+    console.log(`${chain.key}: ✓ ${chainReport.read} branches read, ${chainReport.errors.length} not`);
   } catch (error) {
     // The chain's site can't be reached: as last time.
     chainReport.errors.push(error.message);
@@ -849,6 +878,16 @@ for (const chain of config.chains) {
     await writeChain(chain, chainData);
   }
 }
+
+// Several chains at a time: each mostly waits for its site, and the map searches
+// take turns (see inTurn).
+const Together = 3;
+const waiting = [...config.chains];
+await Promise.all(
+  Array.from({ length: Together }, async () => {
+    while (waiting.length > 0) await readChain(waiting.shift());
+  })
+);
 
 // ---- The files ------------------------------------------------------------
 
