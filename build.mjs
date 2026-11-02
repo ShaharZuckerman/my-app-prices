@@ -148,8 +148,9 @@ async function download(url) {
 }
 
 /** The download links on a Shufersal listing page (category 5 = branches, 2 = full prices). */
-async function shufersalLinks(category, page = 1) {
+async function shufersalLinks(category, page = 1, storeId = '') {
   const query = new URLSearchParams({ catID: String(category), page: String(page) });
+  if (storeId) query.set('storeId', storeId);
   const html = (await download(`${ShufersalSite}FileObject/UpdateCategory?${query}`)).toString();
   return [...html.matchAll(/href="(https:\/\/[^"]+\.blob\.core\.windows\.net[^"]+)"/g)].map(
     (match) => match[1].replace(/&amp;/g, '&')
@@ -157,7 +158,8 @@ async function shufersalLinks(category, page = 1) {
 }
 
 function shufersal(chain) {
-  // Every branch's full price file: listed 20 a page (about 22 pages), read once.
+  // The full price files: listed 20 a page (about 22 pages), read once. The list
+  // misses some branches (others have several files a day): their own page then.
   let fullPrices = null;
   async function listFullPrices() {
     const links = new Map();
@@ -179,9 +181,20 @@ function shufersal(chain) {
     async prices(store) {
       fullPrices ??= listFullPrices();
       const links = await fullPrices;
+      const ownPage = async () => {
+        for (const link of await shufersalLinks(2, 1, store.storeId)) {
+          links.set(link.split('?')[0].split('/').pop(), link);
+        }
+      };
+      if (!newestPriceFull([...links.keys()], chain, store)) await ownPage();
       const name = newestPriceFull([...links.keys()], chain, store);
       if (!name) throw new Error(`no full price file for branch ${store.storeId}`);
-      return { items: readPrices(toText(await download(links.get(name)))), file: name };
+      // The links stop working about half an hour after they're listed: a fresh one then.
+      const file = await download(links.get(name)).catch(async () => {
+        await ownPage();
+        return download(links.get(name));
+      });
+      return { items: readPrices(toText(file)), file: name };
     },
     close() {},
   };
