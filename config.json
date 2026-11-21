@@ -262,7 +262,8 @@
       "israel": true,
       "pages": [
         "https://shop.hazi-hinam.co.il/Prices?t=3",
-        "https://shop.hazi-hinam.co.il/Prices?t=1"
+        "https://shop.hazi-hinam.co.il/Prices?t=1",
+        "https://shop.hazi-hinam.co.il/Prices?t=2"
       ],
       "mapNames": [
         "חצי חינם",
@@ -277,7 +278,8 @@
       "israel": true,
       "pages": [
         "https://prices.super-pharm.co.il/?Category-equals=Stores",
-        "https://prices.super-pharm.co.il/?Category-equals=PriceFull&Date-equals={dmy}&page={page}"
+        "https://prices.super-pharm.co.il/?Category-equals=PriceFull&Date-equals={dmy}&page={page}",
+        "https://prices.super-pharm.co.il/?Category-equals=PromoFull&Date-equals={dmy}&page={page}"
       ],
       "mapNames": [
         "סופר-פארם",
