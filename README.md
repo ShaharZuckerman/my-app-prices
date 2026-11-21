@@ -85,3 +85,18 @@ It reads 2 branches of each chain (`PROMO_BRANCHES`, or only some chains with
 multi-buy, spend minimum, coupon, gift), and writes `out-promos/report.json`, each
 chain's promotions in full, and the start of one raw file per chain. Nothing is
 published; the nightly build is unchanged.
+
+## Deals (published)
+
+Each branch's promotions are read after its prices, and the deals anyone can
+get are published as `sales/<branch id>.json`: flat numbers, 4 per deal,
+`[place, count, price, last day, …]` — the product's place in
+`chains/<key>.json`, how many (1 for a sale, 2 for "2 for ₪24"), the price for
+that many (per kg for weighed products), and the last day (20261130). Only deals
+for everyone: no club, credit card, coupon, minimum purchase or gift; valid now;
+at most 300 products; cheaper than the branch's own price. A branch whose
+promotions couldn't be read keeps last time's deals that are still valid.
+`report.json` counts each chain's `promosRead` and `deals`.
+
+To test a build of a few chains on this computer (nothing is published):
+`$env:ONLY_CHAINS="salach-dabach,rami-levy"; node build.mjs` → `out\`.

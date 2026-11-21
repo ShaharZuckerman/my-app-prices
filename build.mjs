@@ -883,8 +883,16 @@ async function findShops() {
 // and kept from there on GitHub (RUN_AT=github); at home the other chains are kept
 // from GitHub's run. Without RUN_AT, every chain is read.
 const RunAt = process.env.RUN_AT ?? 'all';
+// ONLY_CHAINS=salach-dabach,rami-levy (a test on this computer): only those are read.
+const OnlyChains = process.env.ONLY_CHAINS?.split(',').map((key) => key.trim());
 const readsChain = (chain) =>
-  RunAt === 'github' ? !chain.israel : RunAt === 'home' ? Boolean(chain.israel) : true;
+  OnlyChains
+    ? OnlyChains.includes(chain.key)
+    : RunAt === 'github'
+      ? !chain.israel
+      : RunAt === 'home'
+        ? Boolean(chain.israel)
+        : true;
 // After this long (minutes), the branches not read yet keep last time's prices, so
 // the files are always published (GitHub stops a run after 2 hours).
 const ReadUntil = Date.now() + Number(process.env.READ_MINUTES ?? 75) * 60_000;
@@ -908,6 +916,7 @@ for (const [city, [lat, lng]] of Object.entries(previousPlaces)) {
 await fs.rm(OUT, { recursive: true, force: true });
 await fs.mkdir(new URL('./branches/', OUT), { recursive: true });
 await fs.mkdir(new URL('./chains/', OUT), { recursive: true });
+await fs.mkdir(new URL('./sales/', OUT), { recursive: true });
 
 // The groceries on the map first (they help place the branches). If no server
 // answers tonight, last night's list is used.
@@ -928,7 +937,92 @@ const branches = [];
 // A chain's products, as they're added: barcode → its place in chains/<key>.json, and
 // for each of its branches, which products it has and their prices.
 function newChain() {
-  return { index: new Map(), products: [], branches: [] };
+  return { index: new Map(), products: [], branches: [], promos: new Map() };
+}
+
+// ---- Deals (sales/<branch id>.json) --------------------------------------------
+// From each branch's promotions, the ones the app can count on for anyone: for
+// everyone (no club, credit card or coupon), no minimum purchase or gift, valid
+// now, and cheaper than the branch's own price. Each deal: a product, how many,
+// the price for that many, and its last day (20261205): a sale is 1 for its price
+// (a weighed product's: per kg), a multi-buy "2 for ₪24" is 2 for 24. Per product,
+// the cheapest of each. The file is flat numbers, 4 per deal: [place, count,
+// price, last day, place, …], the place in chains/<key>.json of the same run.
+
+// A promotion covering more products than this isn't a product's price (one of
+// Dabbah's covers all 43,182, "buy 200").
+const MaxDealProducts = 300;
+// Not a real deal: tests, bag sales, coupons.
+const NotADeal = /טסט|test|שקי(ו)?ת|קופון/i;
+
+const stripZeros = (code) => String(code).replace(/^0+(?=\d)/, '');
+
+/** "2026-12-05 23:59" → 20261205. */
+function dayNumber(when) {
+  const digits = when.replace(/\D/g, '').slice(0, 8);
+  return digits.length === 8 ? Number(digits) : 0;
+}
+
+/**
+ * A branch's deals (see above), from its promotions and its own prices
+ * (barcode → price, the barcode as in its price file).
+ */
+function dealsOf(promos, ownPrices) {
+  const now = Date.now();
+  const byPrice = new Map();
+  for (const [code, price] of ownPrices) byPrice.set(stripZeros(code), { code, price });
+  // Per product and how many: the cheapest.
+  const best = new Map();
+  for (const promo of promos) {
+    if (promo.audience !== 'everyone' || promo.isCoupon) continue;
+    if ((promo.minPurchase ?? 0) > 0 || promo.gifts.length > 0 || (promo.giftCount ?? 0) > 0) continue;
+    if (promo.items.length === 0 || promo.items.length > MaxDealProducts) continue;
+    if (NotADeal.test(promo.description)) continue;
+    const start = promoTime(promo.start);
+    const end = promoTime(promo.end);
+    if ((start !== null && start > now) || (end !== null && end < now)) continue;
+    const percent = /%/.test(promo.description) && (promo.discountRate ?? 0) > 0;
+    // Weighed: the price per kg, for 1 kg. Otherwise how many (a whole number).
+    const count = promo.isWeighted ? 1 : Math.max(1, promo.minQty ?? 1);
+    if (!Number.isInteger(count)) continue;
+    for (const item of promo.items) {
+      const own = byPrice.get(stripZeros(item));
+      if (!own || !(own.price > 0)) continue;
+      const total = percent
+        ? own.price * count * (1 - promo.discountRate / 100)
+        : promo.isWeighted
+          ? promo.discountedPricePerMida
+          : promo.discountedPrice;
+      if (!(total > 0) || total / count >= own.price - 0.005) continue;
+      const key = `${own.code}|${count}`;
+      const deal = [own.code, count, Math.round(total * 100) / 100, dayNumber(promo.end)];
+      const known = best.get(key);
+      if (!known || deal[2] < known[2]) best.set(key, deal);
+    }
+  }
+  return [...best.values()];
+}
+
+/**
+ * Last time's deals of a branch that are still valid (its promotions weren't read
+ * tonight), as [barcode, count, price, last day]: their places were in last
+ * time's product list.
+ */
+async function lastDeals(id, chainKey) {
+  const today = Number(dayCode(0));
+  const flat = await readPrevious(`sales/${id}.json`);
+  if (!Array.isArray(flat)) return [];
+  if (!lastChains.has(chainKey)) lastChains.set(chainKey, await readPrevious(`chains/${chainKey}.json`));
+  const products = lastChains.get(chainKey)?.products;
+  if (!products) return [];
+  const deals = [];
+  for (let i = 0; i + 3 < flat.length; i += 4) {
+    const product = products[flat[i]];
+    if (product && (!flat[i + 3] || flat[i + 3] >= today)) {
+      deals.push([product[0], flat[i + 1], flat[i + 2], flat[i + 3]]);
+    }
+  }
+  return deals;
 }
 
 /** Adds a branch's products ([barcode, name, price, by weight]) to its chain. */
@@ -964,6 +1058,23 @@ async function writeChain(chain, chainData) {
     const all = new Array(chainData.products.length).fill(0);
     places.forEach((place, i) => (all[place] = prices[i]));
     await fs.writeFile(new URL(`./branches/${id}.json`, OUT), JSON.stringify(all));
+    // Its deals: from tonight's promotions, or else last time's still valid.
+    const promos = chainData.promos.get(id);
+    const deals = promos
+      ? dealsOf(
+          promos,
+          [...places].map((place, i) => [chainData.products[place][0], prices[i]])
+        )
+      : await lastDeals(id, chain.key);
+    // Flat, by place in this run's product list (a product no longer listed: left out).
+    const flat = deals.flatMap(([code, count, price, last]) => {
+      const place = chainData.index.get(code);
+      return place === undefined ? [] : [place, count, price, last];
+    });
+    if (flat.length > 0) {
+      await fs.writeFile(new URL(`./sales/${id}.json`, OUT), JSON.stringify(flat));
+      report.chains[chain.key].deals = (report.chains[chain.key].deals ?? 0) + flat.length / 4;
+    }
   }
 }
 
@@ -1076,6 +1187,16 @@ async function readChain(chain) {
           items.map((item) => [item[0], item[1], item[3], item[7]])
         );
         chainReport.read++;
+        // Its promotions (for its deals): if there's time, else last time's deals.
+        if (source.promos && Date.now() <= ReadUntil) {
+          try {
+            chainData.promos.set(id, (await source.promos(branch)).promos);
+            chainReport.promosRead = (chainReport.promosRead ?? 0) + 1;
+          } catch (error) {
+            (chainReport.promoErrors ??= []).length < 5 &&
+              chainReport.promoErrors.push(`${branch.name}: ${error.message}`);
+          }
+        }
       } catch (error) {
         // No fresh file tonight: keep the last prices we had for this branch, if any.
         const last = lastTime.get(id);
