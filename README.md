@@ -88,15 +88,16 @@ published; the nightly build is unchanged.
 
 ## Deals (published)
 
-Each branch's promotions are read after its prices, and the deals anyone can
-get are published as `sales/<branch id>.json`: flat numbers, 4 per deal,
-`[place, count, price, last day, …]` — the product's place in
-`chains/<key>.json`, how many (1 for a sale, 2 for "2 for ₪24"), the price for
-that many (per kg for weighed products), and the last day (20261130). Only deals
-for everyone: no club, credit card, coupon, minimum purchase or gift; valid now;
-at most 300 products; cheaper than the branch's own price. A branch whose
-promotions couldn't be read keeps last time's deals that are still valid.
-`report.json` counts each chain's `promosRead` and `deals`.
+Each branch's promotions are read after its prices, and its deals are published
+as `deals/<branch id>.json`: flat numbers, 6 per deal, `[place, count, price,
+last day, for whom, minimum, …]` — the product's place in `chains/<key>.json`,
+how many (1 for a sale, 2 for "2 for ₪24"), the price for that many (per kg for
+weighed products), the last day (20261130), for whom (0 everyone, 1 the chain's
+club, 2 its credit card) and the minimum purchase (0: none). Left out: coupons,
+gifts, deals for other groups, more than 300 products, tests and bag sales, and
+deals not cheaper than the branch's own price. A branch whose promotions couldn't
+be read keeps last time's deals that are still valid. `report.json` counts each
+chain's `promosRead` and `deals`.
 
 To test a build of a few chains on this computer (nothing is published):
 `$env:ONLY_CHAINS="salach-dabach,rami-levy"; node build.mjs` → `out\`.

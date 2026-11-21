@@ -916,7 +916,7 @@ for (const [city, [lat, lng]] of Object.entries(previousPlaces)) {
 await fs.rm(OUT, { recursive: true, force: true });
 await fs.mkdir(new URL('./branches/', OUT), { recursive: true });
 await fs.mkdir(new URL('./chains/', OUT), { recursive: true });
-await fs.mkdir(new URL('./sales/', OUT), { recursive: true });
+await fs.mkdir(new URL('./deals/', OUT), { recursive: true });
 
 // The groceries on the map first (they help place the branches). If no server
 // answers tonight, last night's list is used.
@@ -940,20 +940,26 @@ function newChain() {
   return { index: new Map(), products: [], branches: [], promos: new Map() };
 }
 
-// ---- Deals (sales/<branch id>.json) --------------------------------------------
-// From each branch's promotions, the ones the app can count on for anyone: for
-// everyone (no club, credit card or coupon), no minimum purchase or gift, valid
-// now, and cheaper than the branch's own price. Each deal: a product, how many,
-// the price for that many, and its last day (20261205): a sale is 1 for its price
-// (a weighed product's: per kg), a multi-buy "2 for ₪24" is 2 for 24. Per product,
-// the cheapest of each. The file is flat numbers, 4 per deal: [place, count,
-// price, last day, place, …], the place in chains/<key>.json of the same run.
+// ---- Deals (deals/<branch id>.json) --------------------------------------------
+// From each branch's promotions, the ones the app can count: valid now, cheaper
+// than the branch's own price, no coupon or gift; for everyone, the chain's club
+// or its credit card (the app counts those for who has them), with or without a
+// minimum purchase (counted when the basket reaches it). Each deal: a product,
+// how many, the price for that many, its last day (20261205), for whom (0
+// everyone, 1 club, 2 credit card) and the minimum purchase (0: none). A sale is
+// 1 for its price (a weighed product's: per kg); a multi-buy "2 for ₪24" is 2 for
+// 24. Per product, the cheapest of each kind. The file is flat numbers, 6 per
+// deal: [place, count, price, last day, for whom, minimum, place, …], the place
+// in chains/<key>.json of the same run.
 
 // A promotion covering more products than this isn't a product's price (one of
 // Dabbah's covers all 43,182, "buy 200").
 const MaxDealProducts = 300;
 // Not a real deal: tests, bag sales, coupons.
 const NotADeal = /טסט|test|שקי(ו)?ת|קופון/i;
+
+// For whom, as written in the deals file.
+const DealAudience = { everyone: 0, club: 1, creditCard: 2 };
 
 const stripZeros = (code) => String(code).replace(/^0+(?=\d)/, '');
 
@@ -974,8 +980,10 @@ function dealsOf(promos, ownPrices) {
   // Per product and how many: the cheapest.
   const best = new Map();
   for (const promo of promos) {
-    if (promo.audience !== 'everyone' || promo.isCoupon) continue;
-    if ((promo.minPurchase ?? 0) > 0 || promo.gifts.length > 0 || (promo.giftCount ?? 0) > 0) continue;
+    const audience = DealAudience[promo.audience];
+    if (audience === undefined || promo.isCoupon) continue;
+    if (promo.gifts.length > 0 || (promo.giftCount ?? 0) > 0) continue;
+    const minimum = Math.max(0, promo.minPurchase ?? 0);
     if (promo.items.length === 0 || promo.items.length > MaxDealProducts) continue;
     if (NotADeal.test(promo.description)) continue;
     const start = promoTime(promo.start);
@@ -994,8 +1002,15 @@ function dealsOf(promos, ownPrices) {
           ? promo.discountedPricePerMida
           : promo.discountedPrice;
       if (!(total > 0) || total / count >= own.price - 0.005) continue;
-      const key = `${own.code}|${count}`;
-      const deal = [own.code, count, Math.round(total * 100) / 100, dayNumber(promo.end)];
+      const key = `${own.code}|${count}|${audience}|${minimum}`;
+      const deal = [
+        own.code,
+        count,
+        Math.round(total * 100) / 100,
+        dayNumber(promo.end),
+        audience,
+        minimum,
+      ];
       const known = best.get(key);
       if (!known || deal[2] < known[2]) best.set(key, deal);
     }
@@ -1005,21 +1020,21 @@ function dealsOf(promos, ownPrices) {
 
 /**
  * Last time's deals of a branch that are still valid (its promotions weren't read
- * tonight), as [barcode, count, price, last day]: their places were in last
- * time's product list.
+ * tonight), as [barcode, count, price, last day, for whom, minimum]: their places
+ * were in last time's product list.
  */
 async function lastDeals(id, chainKey) {
   const today = Number(dayCode(0));
-  const flat = await readPrevious(`sales/${id}.json`);
+  const flat = await readPrevious(`deals/${id}.json`);
   if (!Array.isArray(flat)) return [];
   if (!lastChains.has(chainKey)) lastChains.set(chainKey, await readPrevious(`chains/${chainKey}.json`));
   const products = lastChains.get(chainKey)?.products;
   if (!products) return [];
   const deals = [];
-  for (let i = 0; i + 3 < flat.length; i += 4) {
+  for (let i = 0; i + 5 < flat.length; i += 6) {
     const product = products[flat[i]];
     if (product && (!flat[i + 3] || flat[i + 3] >= today)) {
-      deals.push([product[0], flat[i + 1], flat[i + 2], flat[i + 3]]);
+      deals.push([product[0], ...flat.slice(i + 1, i + 6)]);
     }
   }
   return deals;
@@ -1067,13 +1082,13 @@ async function writeChain(chain, chainData) {
         )
       : await lastDeals(id, chain.key);
     // Flat, by place in this run's product list (a product no longer listed: left out).
-    const flat = deals.flatMap(([code, count, price, last]) => {
+    const flat = deals.flatMap(([code, ...rest]) => {
       const place = chainData.index.get(code);
-      return place === undefined ? [] : [place, count, price, last];
+      return place === undefined ? [] : [place, ...rest];
     });
     if (flat.length > 0) {
-      await fs.writeFile(new URL(`./sales/${id}.json`, OUT), JSON.stringify(flat));
-      report.chains[chain.key].deals = (report.chains[chain.key].deals ?? 0) + flat.length / 4;
+      await fs.writeFile(new URL(`./deals/${id}.json`, OUT), JSON.stringify(flat));
+      report.chains[chain.key].deals = (report.chains[chain.key].deals ?? 0) + flat.length / 6;
     }
   }
 }
