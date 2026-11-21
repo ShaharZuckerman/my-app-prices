@@ -139,6 +139,75 @@ function readPrices(fileText) {
     .filter(([code, name, , price]) => code && name && price !== null);
 }
 
+/**
+ * Who gets a promotion, from its club field: 0 everyone, 1 the chain's club, 2 a
+ * credit card, 3 other (vouchers, an app). Chains write it several ways ("0",
+ * "0 - כלל הלקוחות", "(2=מועדון אשראי|2=…)&(3=…)"): every number before "=" or
+ * "-" (or alone).
+ */
+function clubNumbers(value) {
+  return [...text(value).matchAll(/(\d+)\s*(?:=|-|$|\|)/g)].map((match) => match[1]);
+}
+
+/** Who a promotion is for, by its club numbers: the most limiting one. */
+function audienceOf(clubs) {
+  if (clubs.includes('2')) return 'creditCard';
+  if (clubs.includes('1')) return 'club';
+  if (clubs.includes('3')) return 'other';
+  return 'everyone';
+}
+
+// The last promotions file read (its start goes in the sample report, to see its layout).
+let lastPromoText = '';
+
+/**
+ * A branch's promotions (its PromoFull file, in the format the law sets): each
+ * one's id, description, when it's valid, who gets it (see audienceOf), its
+ * conditions (how many to buy, a minimum purchase, a coupon) and reward (a price
+ * for the amount, or a percent off), and its products' barcodes (gifts apart).
+ * Two layouts: most chains list the conditions with each product (Groups →
+ * PromotionItem, dates as PromotionStartDateTime); some (Keshet) on the promotion
+ * itself (PromotionItems → Item, PromotionStartDate + Hour). The conditions are
+ * taken from the promotion, or else its first product.
+ */
+function readPromos(fileText) {
+  lastPromoText = fileText;
+  const parsed = xml.parse(fileText);
+  return findAll(parsed, 'promotion').map((promo) => {
+    const lines = [...findAll(promo, 'promotionitem'), ...findAll(promo, 'item')];
+    const first = lines[0] ?? {};
+    const group = findAll(promo, 'group')[0] ?? {};
+    const pick = (key) => (text(promo[key]) !== '' ? promo[key] : (first[key] ?? group[key]));
+    const isGift = (line) => text(line.isgiftitem) === '1';
+    const clubs = findAll(promo, 'clubid').flatMap(clubNumbers);
+    const when = (dateTime, date, hour) =>
+      text(dateTime).replace('T', ' ').slice(0, 16) ||
+      `${text(date)} ${text(hour).slice(0, 5) || '00:00'}`.trim();
+    return {
+      id: text(promo.promotionid),
+      description: text(promo.promotiondescription),
+      start: when(promo.promotionstartdatetime, promo.promotionstartdate, promo.promotionstarthour),
+      end: when(promo.promotionenddatetime, promo.promotionenddate, promo.promotionendhour),
+      audience: audienceOf(clubs),
+      clubs: [...new Set(clubs)],
+      minQty: number(pick('minqty')),
+      maxQty: number(pick('maxqty')),
+      discountedPrice: number(pick('discountedprice')),
+      discountedPricePerMida: number(pick('discountedpricepermida')),
+      discountRate: number(pick('discountrate')),
+      discountType: text(pick('discounttype')),
+      rewardType: text(pick('rewardtype')),
+      minPurchase: number(pick('minpurchaseamnt') ?? pick('minpurchaseamount')),
+      isCoupon: text(promo.additionaliscoupon) === '1',
+      giftCount: number(promo.additionalgiftcount),
+      isWeighted: text(pick('isweightedpromo') ?? pick('bisweighted')) === '1',
+      allowMultiple: text(promo.allowmultiplediscounts) === '1',
+      items: lines.filter((line) => !isGift(line)).map((line) => text(line.itemcode)),
+      gifts: lines.filter(isGift).map((line) => text(line.itemcode)),
+    };
+  });
+}
+
 // ---- Shufersal: its own website --------------------------------------------
 
 async function download(url) {
@@ -196,6 +265,16 @@ function shufersal(chain) {
       });
       return { items: readPrices(toText(file)), file: name };
     },
+    async promos(store) {
+      const links = new Map();
+      for (const link of await shufersalLinks(4, 1, store.storeId)) {
+        links.set(link.split('?')[0].split('/').pop(), link);
+      }
+      const name = newestFile('PromoFull', [...links.keys()], chain, store);
+      if (!name) throw new Error(`no full promotions file for branch ${store.storeId}`);
+      const file = await download(links.get(name));
+      return { promos: readPromos(toText(file)), file: name, bytes: file.length };
+    },
     close() {},
   };
 }
@@ -206,7 +285,12 @@ function shufersal(chain) {
  * branch (zeros in front), date. Some chains leave out the sub-chain.
  */
 function newestPriceFull(names, chain, store) {
-  const pattern = new RegExp(`^PriceFull${chain.chainId}(?:-\\d+)?-0*${store.storeId}-\\d{8}`);
+  return newestFile('PriceFull', names, chain, store);
+}
+
+/** The newest file of a kind (PriceFull, PromoFull) of a branch, from a list of file names. */
+function newestFile(kind, names, chain, store) {
+  const pattern = new RegExp(`^${kind}${chain.chainId}(?:-\\d+)?-0*${store.storeId}-\\d{8}`, 'i');
   return names.filter((each) => pattern.test(each)).sort().at(-1);
 }
 
@@ -241,6 +325,12 @@ async function carrefour(chain) {
       if (!name) throw new Error(`no full price file for branch ${store.storeId}`);
       return { items: readPrices(toText(await download(links.get(name)))), file: name };
     },
+    async promos(store) {
+      const name = newestFile('PromoFull', names, chain, store);
+      if (!name) throw new Error(`no full promotions file for branch ${store.storeId}`);
+      const file = await download(links.get(name));
+      return { promos: readPromos(toText(file)), file: name, bytes: file.length };
+    },
     close() {},
   };
 }
@@ -267,6 +357,12 @@ async function laibcatalog(chain) {
       if (!name) throw new Error(`no full price file for branch ${store.storeId}`);
       return { items: readPrices(toText(await download(link(name)))), file: name };
     },
+    async promos(store) {
+      const name = newestFile('PromoFull', names, chain, store);
+      if (!name) throw new Error(`no full promotions file for branch ${store.storeId}`);
+      const file = await download(link(name));
+      return { promos: readPromos(toText(file)), file: name, bytes: file.length };
+    },
     close() {},
   };
 }
@@ -282,7 +378,7 @@ const MaxPages = 80;
 async function linksOn(url) {
   const page = (await download(url)).toString();
   const links = new Map();
-  for (const [, href] of page.matchAll(/(?:href="|"url":")([^"]*(?:PriceFull|Stores)[^"]*)"/g)) {
+  for (const [, href] of page.matchAll(/(?:href="|"url":")([^"]*(?:PriceFull|PromoFull|Stores)[^"]*)"/g)) {
     const full = new URL(href.replace(/&amp;/g, '&'), url).href;
     links.set(full.split('?')[0].split('/').pop(), full);
   }
@@ -320,6 +416,12 @@ async function linkPages(chain) {
       if (!name) throw new Error(`no full price file for branch ${store.storeId}`);
       return { items: readPrices(toText(await download(links.get(name)))), file: name };
     },
+    async promos(store) {
+      const name = newestFile('PromoFull', names, chain, store);
+      if (!name) throw new Error(`no full promotions file for branch ${store.storeId}`);
+      const file = await download(links.get(name));
+      return { promos: readPromos(toText(file)), file: name, bytes: file.length };
+    },
     close() {},
   };
 }
@@ -343,6 +445,7 @@ async function cerberus(chain) {
   chain.fileSample = {
     total: names.length,
     priceFull: names.filter((name) => /^PriceFull/i.test(name)).length,
+    promoFull: names.filter((name) => /^PromoFull/i.test(name)).length,
     examples: [...names].sort().filter((_, index, all) => index % Math.ceil(all.length / 25) === 0),
   };
 
@@ -367,6 +470,12 @@ async function cerberus(chain) {
       if (!name) throw new Error(`no full price file for branch ${store.storeId}`);
       return { items: readPrices(toText(await fetchFile(name))), file: name };
     },
+    async promos(store) {
+      const name = newestFile('PromoFull', names, chain, store);
+      if (!name) throw new Error(`no full promotions file for branch ${store.storeId}`);
+      const file = await fetchFile(name);
+      return { promos: readPromos(toText(file)), file: name, bytes: file.length };
+    },
     close() {
       client.close();
     },
@@ -381,6 +490,106 @@ const Sources = {
   pages: linkPages,
   cerberus,
 };
+
+// ---- The promotions, a sample (PROMO_SAMPLE=1): a report, nothing published ----
+// For a look at the chains' promotion files before the app uses them: a few
+// branches of each chain (PROMO_BRANCHES, 2), each promotion sorted by who gets it
+// and what kind it is, written to out-promos/ (report.json, and each chain's
+// promotions in full). PROMO_CHAINS=shufersal,rami-levy reads only those.
+
+/** What kind of promotion it is, for the report (and later the app). */
+function promoKind(promo) {
+  if (promo.minPurchase > 0) return 'spendMinimum';
+  if (promo.isCoupon) return 'coupon';
+  if (promo.giftCount > 0 || promo.gifts.length > 0) return 'gift';
+  if ((promo.minQty ?? 1) > 1) return 'multiBuy';
+  return 'simple';
+}
+
+/** "2026-11-21 08:00" (or "2026-11-21T08:00:00") as a time. */
+function promoTime(when) {
+  const time = Date.parse(when.replace(' ', 'T'));
+  return Number.isFinite(time) ? time : null;
+}
+
+async function promoSample() {
+  const PerChain = Number(process.env.PROMO_BRANCHES ?? 2);
+  const only = process.env.PROMO_CHAINS?.split(',').map((key) => key.trim());
+  const out = new URL('./out-promos/', import.meta.url);
+  await fs.rm(out, { recursive: true, force: true });
+  await fs.mkdir(out, { recursive: true });
+  const now = Date.now();
+  const summary = { builtAt: new Date().toISOString(), chains: {} };
+  for (const chain of config.chains.filter((each) => !only || only.includes(each.key))) {
+    const chainSummary = {
+      branches: [],
+      promotions: 0,
+      activeNow: 0,
+      byAudience: {},
+      byKind: {},
+      withPrice: 0,
+      withPercent: 0,
+      productLinks: 0,
+      kb: 0,
+      examples: {},
+      errors: [],
+    };
+    summary.chains[chain.key] = chainSummary;
+    let source;
+    try {
+      source = await Sources[chain.source](chain);
+      const stores = await source.stores();
+      const all = [];
+      for (const store of stores) {
+        if (chainSummary.branches.length >= PerChain) break;
+        try {
+          const { promos, file, bytes } = await source.promos(store);
+          chainSummary.branches.push(`${store.storeId} ${store.name} (${file})`);
+          chainSummary.kb += Math.round(bytes / 1024);
+          all.push({ branch: store.storeId, promos });
+          for (const promo of promos) {
+            chainSummary.promotions++;
+            const start = promoTime(promo.start);
+            const end = promoTime(promo.end);
+            if ((start === null || start <= now) && (end === null || end >= now)) {
+              chainSummary.activeNow++;
+            }
+            chainSummary.byAudience[promo.audience] = (chainSummary.byAudience[promo.audience] ?? 0) + 1;
+            const kind = promoKind(promo);
+            chainSummary.byKind[kind] = (chainSummary.byKind[kind] ?? 0) + 1;
+            if (promo.discountedPrice) chainSummary.withPrice++;
+            if (promo.discountRate) chainSummary.withPercent++;
+            chainSummary.productLinks += promo.items.length;
+            const examples = (chainSummary.examples[kind] ??= []);
+            if (examples.length < 3) {
+              const { items, gifts, ...rest } = promo;
+              examples.push({ ...rest, items: items.slice(0, 5), itemCount: items.length });
+            }
+          }
+        } catch (error) {
+          if (chainSummary.errors.length < 3) chainSummary.errors.push(`${store.storeId}: ${error.message}`);
+        }
+      }
+      await fs.writeFile(new URL(`${chain.key}.json`, out), JSON.stringify(all));
+      await fs.writeFile(new URL(`${chain.key}.start.xml`, out), lastPromoText.slice(0, 6000));
+    } catch (error) {
+      chainSummary.errors.push(error.message);
+    } finally {
+      source?.close();
+    }
+    console.log(
+      `${chain.key}: ${chainSummary.branches.length} branches, ${chainSummary.promotions} promotions ` +
+        `(${chainSummary.activeNow} now), ${JSON.stringify(chainSummary.byKind)} ` +
+        `${JSON.stringify(chainSummary.byAudience)}${chainSummary.errors.length ? ' ⚠ ' + chainSummary.errors[0] : ''}`
+    );
+  }
+  await fs.writeFile(new URL('report.json', out), JSON.stringify(summary, null, 1));
+}
+
+if (process.env.PROMO_SAMPLE) {
+  await promoSample();
+  process.exit(0);
+}
 
 // ---- Where each branch is (for "stores near me" in the app) -------------------
 

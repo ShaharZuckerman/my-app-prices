@@ -69,3 +69,19 @@ on). Those chains are marked `"israel": true` in `config.json`: at home
 others; each run keeps the other half from the last published files ("kept N
 branches from last time" in report.json). What the last run did is in
 `logs\run-at-home.log`.
+
+## Promotions (a sample, not published yet)
+
+The chains also publish their promotions (PromoFull files). To look at them
+before the app uses them, run on this computer:
+
+```
+$env:PROMO_SAMPLE=1; node build.mjs
+```
+
+It reads 2 branches of each chain (`PROMO_BRANCHES`, or only some chains with
+`PROMO_CHAINS=shufersal,rami-levy`), sorts every promotion by who gets it
+(everyone, the club, a credit card, other) and what kind it is (simple sale,
+multi-buy, spend minimum, coupon, gift), and writes `out-promos/report.json`, each
+chain's promotions in full, and the start of one raw file per chain. Nothing is
+published; the nightly build is unchanged.
