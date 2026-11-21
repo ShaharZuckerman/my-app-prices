@@ -542,6 +542,8 @@ async function promoSample() {
       const all = [];
       for (const store of stores) {
         if (chainSummary.branches.length >= PerChain) break;
+        // PROMO_STORE=12: only that branch (to check a receipt from it).
+        if (process.env.PROMO_STORE && store.storeId !== process.env.PROMO_STORE) continue;
         try {
           const { promos, file, bytes } = await source.promos(store);
           chainSummary.branches.push(`${store.storeId} ${store.name} (${file})`);
