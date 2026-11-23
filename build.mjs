@@ -981,9 +981,34 @@ async function locate(entry, chain, branch = {}) {
     const store = nearestChainStore(chain, area, SnapKm.area);
     return store ? { ...store, located: 'store' } : { ...area, located: 'area' };
   }
+  // Its chain's only store on the map in its town (e.g. Stop Market Yagur, whose
+  // address is just "קיבוץ יגור"), if no other branch of the chain is already there.
+  const only = await onlyChainStoreInTown(chain, entry);
+  if (only) return { ...only, located: 'store' };
   // Not found (e.g. "כביש חיפה - תל אביב ביציאה מחיפה"): no place rather than the city
   // center, which would put a wrong pin on the map. Can be added in "locations".
   return { located: 'unknown' };
+}
+
+/**
+ * A chain's only store on the map within CityKm of a branch's town, that no other
+ * branch of the chain is already placed at (this run's, or last time's): the
+ * branch, for one nothing else could place. None (or several): null.
+ */
+async function onlyChainStoreInTown(chain, entry) {
+  const center = entry.city ? await cityCenter(entry.city) : null;
+  if (!center) return null;
+  const names = (chain.mapNames ?? [chain.name]).map((name) => name.toLowerCase());
+  const others = [...branches, ...lastTime.values()].filter(
+    (branch) => branch.chain === chain.key && branch.id !== entry.id && branch.lat
+  );
+  const stores = osmShops.filter(
+    (shop) =>
+      names.some((name) => shop.names.includes(name)) &&
+      kmBetween(center, shop) <= CityKm &&
+      !others.some((branch) => kmBetween(branch, shop) <= 0.3)
+  );
+  return stores.length === 1 ? { lat: stores[0].lat, lng: stores[0].lng } : null;
 }
 
 // ---- Every grocery on the map (for "Groceries near me" in the app) -----------
