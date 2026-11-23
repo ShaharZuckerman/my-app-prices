@@ -58,17 +58,16 @@ binaprojects sites (King Store, Maayan 2000, Good Pharm, Zol Vebegadol, Super
 Sapir, City Market, Bareket, Shuk Hayir, Shefa Birkat Hashem: their security
 certificate is revoked); Netiv Hesed (its site shows a database error).
 
-
 ## Where each branch is
 
-Each branch is placed, in this order: by hand ( in config.json, rarely
-needed); from **its chain's own branch list** (: the chain's "find a
+Each branch is placed, in this order: by hand (`"locations"` in config.json, rarely
+needed); from **its chain's own branch list** (`"locator"`: the chain's "find a
 branch" data, kept up to date by the chain: Shufersal's feeds/rsssnifim.json,
 Carrefour's brand.carrefour.co.il/branches, Victory's branches page, Rami Levy's
 api/stores for fuller addresses), matched by branch number, the number in the
 branch's name ("(1040)"), the postal code, or its name's words and city, and
 only if it's within 15 km of its city; else by its address on OpenStreetMap
-(snapped to the chain's store on the map when one is close).  in
+(snapped to the chain's store on the map when one is close). `located` in
 branches.json says which: manual, chain, address, store, area or unknown.
 
 ## The run at home
