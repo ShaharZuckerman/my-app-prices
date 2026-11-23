@@ -59,7 +59,8 @@
         "Shufersal",
         "שופרשל",
         "יוניברס"
-      ]
+      ],
+      "locator": "shufersal"
     },
     {
       "key": "carrefour",
@@ -74,7 +75,8 @@
         "Mega",
         "יינות ביתן",
         "Yeinot Bitan"
-      ]
+      ],
+      "locator": "carrefour"
     },
     {
       "key": "rami-levy",
@@ -86,7 +88,8 @@
       "mapNames": [
         "רמי לוי",
         "Rami Levy"
-      ]
+      ],
+      "locator": "rami-levy"
     },
     {
       "key": "osher-ad",
@@ -230,7 +233,8 @@
       "mapNames": [
         "ויקטורי",
         "Victory"
-      ]
+      ],
+      "locator": "victory"
     },
     {
       "key": "h-cohen",

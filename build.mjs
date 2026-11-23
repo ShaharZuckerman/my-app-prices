@@ -117,6 +117,7 @@ function readStores(fileText) {
     name: text(store.storename),
     address: text(store.address),
     city: text(store.city),
+    zip: text(store.zipcode).replace(/\D/g, ''),
     subChain: text(store.subchainname),
   }));
 }
@@ -782,9 +783,173 @@ function placeInName(entry) {
  *   'unknown'  not found: no coordinates (tried again next night).
  * An address found is also snapped to the chain's store on the map, when one is close.
  */
-async function locate(entry, chain) {
+// ---- Where each branch is, from its chain's own branch list --------------------
+// A chain's "find a branch" page is kept up to date by the chain itself (branches
+// opening and closing), most with each branch's exact place: the best source, so
+// it comes first (after places set by hand). config.json's "locator" names the
+// chain's list. Each list's branches: ids (the chain's branch numbers), name,
+// city, address, postal code, and the place (lat, lng) if the list has it (Rami
+// Levy's has only the address, with its house number: searched for, below).
+
+/** The JSON array after `"key":` in a page (a site's data written into its page). */
+function arrayAfter(page, key) {
+  const at = page.indexOf(`"${key}":`);
+  if (at < 0) return null;
+  const start = page.indexOf('[', at);
+  let depth = 0;
+  for (let i = start; i < page.length; i++) {
+    if (page[i] === '[') depth++;
+    else if (page[i] === ']' && --depth === 0) return JSON.parse(page.slice(start, i + 1));
+  }
+  return null;
+}
+
+const Locators = {
+  // Shufersal's branch locator (shufersal.co.il/locationbranchesapp) reads this list.
+  async shufersal() {
+    const feed = (await download('https://www.shufersal.co.il/feeds/rsssnifim.json')).toString();
+    const { BranchList = [] } = JSON.parse(feed.replace(/^\uFEFF/, ''));
+    return BranchList.filter((branch) => branch.IsActive !== false).map((branch) => ({
+      ids: [String(branch.BranchID)],
+      name: text(branch.BranchName),
+      city: text(branch.City),
+      address: text(branch.BranchAddress),
+      zip: text(branch.PostalCode).replace(/\D/g, ''),
+      lat: number(branch.Latitude),
+      lng: number(branch.Longitude),
+    }));
+  },
+  // Carrefour's branch page has its branches as data ("branchesArr"), each with its
+  // number (also in the price files' branch names: "קרפור סיטי הוד השרון (1040)").
+  async carrefour() {
+    const page = (await download('https://brand.carrefour.co.il/branches')).toString();
+    return (arrayAfter(page, 'branchesArr') ?? [])
+      .filter((branch) => String(branch.is_active) !== '0')
+      .map((branch) => ({
+        ids: [String(branch.branch_code)],
+        name: text(branch.title),
+        city: '',
+        address: text(branch.full_address || branch.address),
+        zip: '',
+        lat: number(branch.gps_point?.lat),
+        lng: number(branch.gps_point?.lng),
+      }));
+  },
+  // Victory's branch page describes each branch for search engines (schema.org
+  // Place): name, street, postal code and place.
+  async victory() {
+    const page = (await download('https://www.victory.co.il/branches/')).toString();
+    const found = [];
+    for (const [, json] of page.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
+      try {
+        const place = JSON.parse(json);
+        if (!place?.geo) continue;
+        found.push({
+          ids: [],
+          name: text(place.name).replace(/^ויקטורי\s*(סניף)?\s*/, ''),
+          city: '',
+          address: text(place.address?.streetAddress),
+          zip: text(place.address?.postalCode).replace(/\D/g, ''),
+          lat: number(place.geo.latitude),
+          lng: number(place.geo.longitude),
+        });
+      } catch {
+        // Not a branch's description.
+      }
+    }
+    return found;
+  },
+  // Rami Levy's site lists each branch's street and house number (no place): a
+  // fuller address to search for than the price files'.
+  async 'rami-levy'() {
+    const { stores } = JSON.parse((await download('https://www.rami-levy.co.il/api/stores')).toString());
+    return (stores?.data ?? [])
+      .filter((branch) => !branch.deleted_at && branch.show_site !== 0)
+      .map((branch) => ({
+        ids: [],
+        name: text(branch.name),
+        city: text(branch.city),
+        address: [text(branch.street), text(branch.home_number)].filter(Boolean).join(' '),
+        zip: '',
+        lat: null,
+        lng: null,
+      }));
+  },
+};
+
+// Each chain's list, read once a run (a failed one: none, the other ways are used).
+const locatorLists = new Map();
+async function locatorList(chain) {
+  if (!chain.locator || !Locators[chain.locator]) return [];
+  if (!locatorLists.has(chain.key)) {
+    locatorLists.set(
+      chain.key,
+      Locators[chain.locator]().catch((error) => {
+        console.log(`${chain.key}: its branch list couldn't be read (${error.message})`);
+        return [];
+      })
+    );
+  }
+  return locatorLists.get(chain.key);
+}
+
+// Words that don't tell branches apart (the chain's and its formats' names).
+const ChainWords = new Set(
+  'שופרסל שלי דיל אקספרס יש בשכונה חסד קרפור סיטי מרקט היפר בעיר יינות ביתן מגה ויקטורי רמי לוי סניף שיווק השקמה אונליין online the'.split(
+    ' '
+  )
+);
+const wordsOf = (name) =>
+  normalizeCity(name)
+    .replace(/["'׳״().,\-–/]+/g, ' ')
+    .split(/\s+/)
+    .filter((word) => word.length > 1 && !/^\d+$/.test(word) && !ChainWords.has(word));
+
+/**
+ * A branch in its chain's own list: by its branch number (or the number in its
+ * name, "(1040)"), else by its postal code, else by its name's words and its
+ * city (the best match, if only one is best).
+ */
+function inChainList(list, branch, entry) {
+  const ids = [branch.storeId, ...(entry.name.match(/\((\d{2,})\)/g) ?? []).map((m) => m.slice(1, -1))]
+    .map((id) => String(id).replace(/^0+(?=\d)/, ''));
+  const byId = list.find((each) => each.ids.some((id) => ids.includes(id.replace(/^0+(?=\d)/, ''))));
+  if (byId) return byId;
+  if (branch.zip && branch.zip.length >= 5) {
+    const byZip = list.filter((each) => each.zip === branch.zip);
+    if (byZip.length === 1) return byZip[0];
+  }
+  const words = new Set(wordsOf(`${entry.name} ${entry.city ?? ''}`));
+  let best = null;
+  let bestScore = 0;
+  let tie = false;
+  for (const each of list) {
+    const theirs = wordsOf(`${each.name} ${each.city} ${each.address}`);
+    const score = theirs.filter((word) => words.has(word)).length;
+    if (score > bestScore) [best, bestScore, tie] = [each, score, false];
+    else if (score === bestScore && score > 0) tie = true;
+  }
+  return bestScore >= 2 && !tie ? best : null;
+}
+
+/** A place that's in Israel, and near its city (not another branch matched by mistake). */
+async function plausible(place, city) {
+  if (!(place.lat > 29 && place.lat < 33.5 && place.lng > 34 && place.lng < 36)) return false;
+  const center = city ? await cityCenter(city) : null;
+  return !center || kmBetween(center, place) <= 15;
+}
+
+async function locate(entry, chain, branch = {}) {
   const manual = config.locations?.[entry.id];
   if (manual) return { lat: manual[0], lng: manual[1], located: 'manual' };
+  // From the chain's own branch list: its place, or a fuller address to search for.
+  const listed = inChainList(await locatorList(chain), branch, entry);
+  if (listed?.lat && listed?.lng && (await plausible(listed, entry.city))) {
+    return { lat: listed.lat, lng: listed.lng, located: 'chain' };
+  }
+  if (listed?.address && !listed.lat) {
+    entry = { ...entry, address: listed.address, city: listed.city || entry.city };
+  }
   const last = lastTime.get(entry.id);
   // Kept from last night, unless it's out of its city (found before CityKm was checked).
   if (last?.located === 'address' || last?.located === 'store') {
@@ -1192,7 +1357,7 @@ async function readChain(chain) {
         city: city(branch),
         address: branch.address,
       };
-      Object.assign(entry, await locate(entry, chain).catch(() => ({ located: 'unknown' })));
+      Object.assign(entry, await locate(entry, chain, branch).catch(() => ({ located: 'unknown' })));
       try {
         if (Date.now() > ReadUntil) throw new Error('out of time this run');
         const { items, file } = await source.prices(branch);
