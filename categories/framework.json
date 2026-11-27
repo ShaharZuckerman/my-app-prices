@@ -1,110 +1,527 @@
 {
-  "about": "The app's own sorting of supermarket products, by where they sit in an Israeli store. Each product is sorted into one aisle (the finest level); the tabs group aisles and can be changed later without sorting again. Agreed with the app's owner 2026-11-28.",
-  "tabs": [
-    { "id": "produce", "emoji": "🥦", "en": "Fruits & Vegetables", "he": "פירות וירקות", "aisles": [
-      { "id": "vegetables", "en": "Vegetables", "he": "ירקות" },
-      { "id": "fruit", "en": "Fruit", "he": "פירות" },
-      { "id": "herbs-mushrooms", "en": "Herbs & mushrooms", "he": "עשבי תיבול ופטריות" }
-    ] },
-    { "id": "bakery", "emoji": "🥖", "en": "Bakery", "he": "מאפייה", "aisles": [
-      { "id": "bread", "en": "Bread, pita & challah", "he": "לחם, פיתות וחלות" },
-      { "id": "rolls", "en": "Rolls", "he": "לחמניות" },
-      { "id": "cakes-pastries", "en": "Cakes & pastries", "he": "עוגות ומאפים" }
-    ] },
-    { "id": "meat-fish", "emoji": "🥩", "en": "Meat & Fish", "he": "בשר ודגים", "aisles": [
-      { "id": "butcher", "en": "Butcher counter", "he": "קצבייה" },
-      { "id": "fish-counter", "en": "Fish counter", "he": "דגים טריים" }
-    ] },
-    { "id": "deli", "emoji": "🧀", "en": "Deli Counter", "he": "מעדנייה", "aisles": [
-      { "id": "cheese-counter", "en": "Cheese counter", "he": "דלפק גבינות" },
-      { "id": "meat-counter", "en": "Meat & smoked fish counter", "he": "דלפק נקניקים ודגים מעושנים" },
-      { "id": "olives-salads", "en": "Olives & salads by weight", "he": "זיתים וסלטים במשקל" }
-    ] },
-    { "id": "dairy", "emoji": "🥛", "en": "Dairy & Eggs", "he": "מוצרי חלב וביצים", "aisles": [
-      { "id": "milk-cream", "en": "Milk & cream", "he": "חלב ושמנת" },
-      { "id": "yogurts-desserts", "en": "Yogurts & desserts", "he": "יוגורטים ומעדנים" },
-      { "id": "soft-cheese", "en": "Cottage & soft cheese", "he": "קוטג' וגבינות רכות" },
-      { "id": "yellow-cheese", "en": "Packaged yellow cheese", "he": "גבינות צהובות ארוזות" },
-      { "id": "butter", "en": "Butter", "he": "חמאה" },
-      { "id": "plant-milks", "en": "Plant milks", "he": "משקאות צמחיים" },
-      { "id": "eggs", "en": "Eggs", "he": "ביצים" }
-    ] },
-    { "id": "chilled", "emoji": "🥗", "en": "Chilled Foods", "he": "מקררים", "aisles": [
-      { "id": "hummus-salads", "en": "Hummus & salads", "he": "חומוס וסלטים" },
-      { "id": "tofu-vegan", "en": "Tofu & vegan", "he": "טופו וטבעוני" },
-      { "id": "fresh-pasta-meals", "en": "Fresh pasta & ready meals", "he": "פסטה טרייה ומנות מוכנות" },
-      { "id": "packaged-cold-cuts", "en": "Packaged cold cuts & sausages", "he": "נקניקים ארוזים" }
-    ] },
-    { "id": "frozen", "emoji": "🧊", "en": "Frozen", "he": "קפואים", "aisles": [
-      { "id": "frozen-veg-fruit", "en": "Vegetables & fruit", "he": "ירקות ופירות קפואים" },
-      { "id": "frozen-meat-fish", "en": "Meat, poultry & fish", "he": "בשר, עוף ודגים קפואים" },
-      { "id": "frozen-meals", "en": "Pastries & meals", "he": "מאפים ומנות קפואים" },
-      { "id": "ice-cream", "en": "Ice cream", "he": "גלידות" }
-    ] },
-    { "id": "pantry", "emoji": "🥫", "en": "Pantry", "he": "מזווה", "aisles": [
-      { "id": "rice-pasta-grains", "en": "Rice, pasta & grains", "he": "אורז, פסטה ודגנים" },
-      { "id": "legumes", "en": "Legumes", "he": "קטניות" },
-      { "id": "flour-sugar", "en": "Flour & sugar", "he": "קמח וסוכר" },
-      { "id": "canned", "en": "Canned & jarred", "he": "שימורים" },
-      { "id": "oils-vinegar", "en": "Oils & vinegar", "he": "שמנים וחומץ" },
-      { "id": "sauces", "en": "Sauces & condiments", "he": "רטבים" },
-      { "id": "cereals", "en": "Breakfast cereals", "he": "דגני בוקר" },
-      { "id": "spreads", "en": "Spreads, jam & honey", "he": "ממרחים, ריבות ודבש" }
-    ] },
-    { "id": "spices-baking", "emoji": "🧂", "en": "Spices & Baking", "he": "תבלינים ואפייה", "aisles": [
-      { "id": "spices", "en": "Spices & salt", "he": "תבלינים ומלח" },
-      { "id": "baking", "en": "Baking ingredients", "he": "מוצרי אפייה" }
-    ] },
-    { "id": "snacks-sweets", "emoji": "🍫", "en": "Snacks & Sweets", "he": "חטיפים וממתקים", "aisles": [
-      { "id": "salty-snacks", "en": "Salty snacks", "he": "חטיפים מלוחים" },
-      { "id": "chocolate-candy", "en": "Chocolate & candy", "he": "שוקולד וסוכריות" },
-      { "id": "cookies", "en": "Cookies & biscuits", "he": "עוגיות וביסקוויטים" },
-      { "id": "nuts-dried-fruit", "en": "Nuts & dried fruit", "he": "פיצוחים ופירות יבשים" }
-    ] },
-    { "id": "drinks", "emoji": "🥤", "en": "Drinks", "he": "משקאות", "aisles": [
-      { "id": "water", "en": "Water", "he": "מים" },
-      { "id": "soft-drinks", "en": "Soft drinks & juice", "he": "משקאות קלים ומיצים" },
-      { "id": "coffee-tea", "en": "Coffee & tea", "he": "קפה ותה" }
-    ] },
-    { "id": "alcohol", "emoji": "🍷", "en": "Alcohol", "he": "אלכוהול", "aisles": [
-      { "id": "wine", "en": "Wine", "he": "יין" },
-      { "id": "beer-spirits", "en": "Beer & spirits", "he": "בירה ומשקאות חריפים" }
-    ] },
-    { "id": "cleaning", "emoji": "🧽", "en": "Cleaning", "he": "ניקיון", "aisles": [
-      { "id": "laundry", "en": "Laundry", "he": "כביסה" },
-      { "id": "dishwashing", "en": "Dishwashing", "he": "כלים" },
-      { "id": "home-cleaners", "en": "Home cleaners", "he": "ניקוי הבית" }
-    ] },
-    { "id": "paper", "emoji": "🧻", "en": "Paper & Disposables", "he": "נייר וחד פעמי", "aisles": [
-      { "id": "toilet-paper", "en": "Toilet paper & tissues", "he": "נייר טואלט וממחטות" },
-      { "id": "paper-towels", "en": "Paper towels", "he": "מגבות נייר" },
-      { "id": "disposable-tableware", "en": "Disposable tableware", "he": "כלים חד פעמיים" },
-      { "id": "garbage-bags", "en": "Garbage bags", "he": "שקיות אשפה" }
-    ] },
-    { "id": "personal-care", "emoji": "🧴", "en": "Personal Care", "he": "טיפוח והיגיינה", "aisles": [
-      { "id": "hair", "en": "Hair", "he": "שיער" },
-      { "id": "body-soap", "en": "Body & soap", "he": "גוף וסבון" },
-      { "id": "dental", "en": "Dental", "he": "היגיינת הפה" },
-      { "id": "deodorant", "en": "Deodorant", "he": "דאודורנט" },
-      { "id": "skincare-cosmetics", "en": "Skincare & cosmetics", "he": "טיפוח וקוסמטיקה" },
-      { "id": "hygiene", "en": "Hygiene", "he": "היגיינה" }
-    ] },
-    { "id": "baby", "emoji": "🍼", "en": "Baby", "he": "תינוקות", "aisles": [
-      { "id": "baby-food", "en": "Formula & baby food", "he": "תמ\"ל ומזון תינוקות" },
-      { "id": "diapers-wipes", "en": "Diapers & wipes", "he": "חיתולים ומגבונים" },
-      { "id": "baby-care", "en": "Baby care", "he": "טיפוח תינוקות" }
-    ] },
-    { "id": "pets", "emoji": "🐾", "en": "Pets", "he": "חיות מחמד", "aisles": [
-      { "id": "pet-food", "en": "Food & treats", "he": "מזון וחטיפים" },
-      { "id": "pet-care", "en": "Litter & care", "he": "חול וטיפוח" }
-    ] },
-    { "id": "home-kitchen", "emoji": "🍽️", "en": "Home & Kitchen", "he": "בית ומטבח", "aisles": [
-      { "id": "foil-wrap", "en": "Foil, wrap & baking paper", "he": "נייר כסף, ניילון נצמד ונייר אפייה" },
-      { "id": "batteries-bulbs", "en": "Batteries & bulbs", "he": "סוללות ונורות" },
-      { "id": "tableware-cookware", "en": "Tableware & cookware", "he": "כלי שולחן ובישול" }
-    ] },
-    { "id": "other", "emoji": "📦", "en": "Other", "he": "אחר", "aisles": [
-      { "id": "other", "en": "Other", "he": "אחר" }
-    ] }
-  ]
+ "about": "The app's own sorting of supermarket products, by where they sit in an Israeli store. Each product is sorted into one aisle (the finest level); the tabs group aisles and can be changed later without sorting again. Agreed with the app's owner 2026-11-28.",
+ "tabs": [
+  {
+   "id": "produce",
+   "emoji": "🥦",
+   "en": "Fruits & Vegetables",
+   "he": "פירות וירקות",
+   "aisles": [
+    {
+     "id": "vegetables",
+     "en": "Vegetables",
+     "he": "ירקות"
+    },
+    {
+     "id": "fruit",
+     "en": "Fruit",
+     "he": "פירות"
+    },
+    {
+     "id": "herbs-mushrooms",
+     "en": "Herbs & mushrooms",
+     "he": "עשבי תיבול ופטריות"
+    }
+   ]
+  },
+  {
+   "id": "bakery",
+   "emoji": "🥖",
+   "en": "Bakery",
+   "he": "מאפייה",
+   "aisles": [
+    {
+     "id": "bread",
+     "en": "Bread, pita & challah",
+     "he": "לחם, פיתות וחלות"
+    },
+    {
+     "id": "rolls",
+     "en": "Rolls",
+     "he": "לחמניות"
+    },
+    {
+     "id": "cakes-pastries",
+     "en": "Cakes & pastries",
+     "he": "עוגות ומאפים"
+    }
+   ]
+  },
+  {
+   "id": "meat-fish",
+   "emoji": "🥩",
+   "en": "Meat & Fish",
+   "he": "בשר ודגים",
+   "aisles": [
+    {
+     "id": "butcher",
+     "en": "Butcher counter",
+     "he": "קצבייה"
+    },
+    {
+     "id": "fish-counter",
+     "en": "Fish counter",
+     "he": "דגים טריים"
+    }
+   ]
+  },
+  {
+   "id": "deli",
+   "emoji": "🧀",
+   "en": "Deli Counter",
+   "he": "מעדנייה",
+   "aisles": [
+    {
+     "id": "cheese-counter",
+     "en": "Cheese counter",
+     "he": "דלפק גבינות"
+    },
+    {
+     "id": "meat-counter",
+     "en": "Meat & smoked fish counter",
+     "he": "דלפק נקניקים ודגים מעושנים"
+    },
+    {
+     "id": "olives-salads",
+     "en": "Olives & salads by weight",
+     "he": "זיתים וסלטים במשקל"
+    }
+   ]
+  },
+  {
+   "id": "dairy",
+   "emoji": "🥛",
+   "en": "Dairy & Eggs",
+   "he": "מוצרי חלב וביצים",
+   "aisles": [
+    {
+     "id": "milk-cream",
+     "en": "Milk & cream",
+     "he": "חלב ושמנת"
+    },
+    {
+     "id": "yogurts-desserts",
+     "en": "Yogurts & desserts",
+     "he": "יוגורטים ומעדנים"
+    },
+    {
+     "id": "soft-cheese",
+     "en": "Cottage & soft cheese",
+     "he": "קוטג' וגבינות רכות"
+    },
+    {
+     "id": "yellow-cheese",
+     "en": "Packaged yellow cheese",
+     "he": "גבינות צהובות ארוזות"
+    },
+    {
+     "id": "butter",
+     "en": "Butter",
+     "he": "חמאה"
+    },
+    {
+     "id": "plant-milks",
+     "en": "Plant milks",
+     "he": "משקאות צמחיים"
+    },
+    {
+     "id": "eggs",
+     "en": "Eggs",
+     "he": "ביצים"
+    }
+   ]
+  },
+  {
+   "id": "chilled",
+   "emoji": "🥗",
+   "en": "Chilled Foods",
+   "he": "מקררים",
+   "aisles": [
+    {
+     "id": "hummus-salads",
+     "en": "Hummus & salads",
+     "he": "חומוס וסלטים"
+    },
+    {
+     "id": "tofu-vegan",
+     "en": "Tofu & vegan",
+     "he": "טופו וטבעוני"
+    },
+    {
+     "id": "fresh-pasta-meals",
+     "en": "Fresh pasta & ready meals",
+     "he": "פסטה טרייה ומנות מוכנות"
+    },
+    {
+     "id": "packaged-cold-cuts",
+     "en": "Packaged cold cuts & sausages",
+     "he": "נקניקים ארוזים"
+    }
+   ]
+  },
+  {
+   "id": "frozen",
+   "emoji": "🧊",
+   "en": "Frozen",
+   "he": "קפואים",
+   "aisles": [
+    {
+     "id": "frozen-veg-fruit",
+     "en": "Vegetables & fruit",
+     "he": "ירקות ופירות קפואים"
+    },
+    {
+     "id": "frozen-meat-fish",
+     "en": "Meat, poultry & fish",
+     "he": "בשר, עוף ודגים קפואים"
+    },
+    {
+     "id": "frozen-meals",
+     "en": "Pastries & meals",
+     "he": "מאפים ומנות קפואים"
+    },
+    {
+     "id": "ice-cream",
+     "en": "Ice cream",
+     "he": "גלידות"
+    }
+   ]
+  },
+  {
+   "id": "pantry",
+   "emoji": "🥫",
+   "en": "Pantry",
+   "he": "מזווה",
+   "aisles": [
+    {
+     "id": "rice-pasta-grains",
+     "en": "Rice, pasta & grains",
+     "he": "אורז, פסטה ודגנים"
+    },
+    {
+     "id": "legumes",
+     "en": "Legumes",
+     "he": "קטניות"
+    },
+    {
+     "id": "flour-sugar",
+     "en": "Flour & sugar",
+     "he": "קמח וסוכר"
+    },
+    {
+     "id": "canned",
+     "en": "Canned & jarred",
+     "he": "שימורים"
+    },
+    {
+     "id": "oils-vinegar",
+     "en": "Oils & vinegar",
+     "he": "שמנים וחומץ"
+    },
+    {
+     "id": "sauces",
+     "en": "Sauces & condiments",
+     "he": "רטבים"
+    },
+    {
+     "id": "cereals",
+     "en": "Breakfast cereals",
+     "he": "דגני בוקר"
+    },
+    {
+     "id": "spreads",
+     "en": "Spreads, jam & honey",
+     "he": "ממרחים, ריבות ודבש"
+    }
+   ]
+  },
+  {
+   "id": "spices-baking",
+   "emoji": "🧂",
+   "en": "Spices & Baking",
+   "he": "תבלינים ואפייה",
+   "aisles": [
+    {
+     "id": "spices",
+     "en": "Spices & salt",
+     "he": "תבלינים ומלח"
+    },
+    {
+     "id": "baking",
+     "en": "Baking ingredients",
+     "he": "מוצרי אפייה"
+    }
+   ]
+  },
+  {
+   "id": "snacks-sweets",
+   "emoji": "🍫",
+   "en": "Snacks & Sweets",
+   "he": "חטיפים וממתקים",
+   "aisles": [
+    {
+     "id": "salty-snacks",
+     "en": "Salty snacks",
+     "he": "חטיפים מלוחים"
+    },
+    {
+     "id": "chocolate-candy",
+     "en": "Chocolate & candy",
+     "he": "שוקולד וסוכריות"
+    },
+    {
+     "id": "cookies",
+     "en": "Cookies & biscuits",
+     "he": "עוגיות וביסקוויטים"
+    },
+    {
+     "id": "nuts-dried-fruit",
+     "en": "Nuts & dried fruit",
+     "he": "פיצוחים ופירות יבשים"
+    }
+   ]
+  },
+  {
+   "id": "drinks",
+   "emoji": "🥤",
+   "en": "Drinks",
+   "he": "משקאות",
+   "aisles": [
+    {
+     "id": "water",
+     "en": "Water",
+     "he": "מים"
+    },
+    {
+     "id": "soft-drinks",
+     "en": "Soft drinks & juice",
+     "he": "משקאות קלים ומיצים"
+    },
+    {
+     "id": "coffee-tea",
+     "en": "Coffee & tea",
+     "he": "קפה ותה"
+    }
+   ]
+  },
+  {
+   "id": "alcohol",
+   "emoji": "🍷",
+   "en": "Alcohol",
+   "he": "אלכוהול",
+   "aisles": [
+    {
+     "id": "wine",
+     "en": "Wine",
+     "he": "יין"
+    },
+    {
+     "id": "beer-spirits",
+     "en": "Beer & spirits",
+     "he": "בירה ומשקאות חריפים"
+    }
+   ]
+  },
+  {
+   "id": "cleaning",
+   "emoji": "🧽",
+   "en": "Cleaning",
+   "he": "ניקיון",
+   "aisles": [
+    {
+     "id": "laundry",
+     "en": "Laundry",
+     "he": "כביסה"
+    },
+    {
+     "id": "dishwashing",
+     "en": "Dishwashing",
+     "he": "כלים"
+    },
+    {
+     "id": "home-cleaners",
+     "en": "Home cleaners",
+     "he": "ניקוי הבית"
+    },
+    {
+     "id": "cleaning-tools",
+     "en": "Mops, brooms & sponges",
+     "he": "מגבים, מטאטאים וספוגים"
+    }
+   ]
+  },
+  {
+   "id": "paper",
+   "emoji": "🧻",
+   "en": "Paper & Disposables",
+   "he": "נייר וחד פעמי",
+   "aisles": [
+    {
+     "id": "toilet-paper",
+     "en": "Toilet paper & tissues",
+     "he": "נייר טואלט וממחטות"
+    },
+    {
+     "id": "paper-towels",
+     "en": "Paper towels",
+     "he": "מגבות נייר"
+    },
+    {
+     "id": "disposable-tableware",
+     "en": "Disposable tableware",
+     "he": "כלים חד פעמיים"
+    },
+    {
+     "id": "garbage-bags",
+     "en": "Garbage bags",
+     "he": "שקיות אשפה"
+    }
+   ]
+  },
+  {
+   "id": "personal-care",
+   "emoji": "🧴",
+   "en": "Personal Care",
+   "he": "טיפוח והיגיינה",
+   "aisles": [
+    {
+     "id": "hair",
+     "en": "Hair",
+     "he": "שיער"
+    },
+    {
+     "id": "body-soap",
+     "en": "Body & soap",
+     "he": "גוף וסבון"
+    },
+    {
+     "id": "dental",
+     "en": "Dental",
+     "he": "היגיינת הפה"
+    },
+    {
+     "id": "deodorant",
+     "en": "Deodorant",
+     "he": "דאודורנט"
+    },
+    {
+     "id": "skincare-cosmetics",
+     "en": "Skincare & cosmetics",
+     "he": "טיפוח וקוסמטיקה"
+    },
+    {
+     "id": "hygiene",
+     "en": "Hygiene",
+     "he": "היגיינה"
+    }
+   ]
+  },
+  {
+   "id": "baby",
+   "emoji": "🍼",
+   "en": "Baby",
+   "he": "תינוקות",
+   "aisles": [
+    {
+     "id": "baby-food",
+     "en": "Formula & baby food",
+     "he": "תמ\"ל ומזון תינוקות"
+    },
+    {
+     "id": "diapers-wipes",
+     "en": "Diapers & wipes",
+     "he": "חיתולים ומגבונים"
+    },
+    {
+     "id": "baby-care",
+     "en": "Baby care",
+     "he": "טיפוח תינוקות"
+    }
+   ]
+  },
+  {
+   "id": "pets",
+   "emoji": "🐾",
+   "en": "Pets",
+   "he": "חיות מחמד",
+   "aisles": [
+    {
+     "id": "pet-food",
+     "en": "Food & treats",
+     "he": "מזון וחטיפים"
+    },
+    {
+     "id": "pet-care",
+     "en": "Litter & care",
+     "he": "חול וטיפוח"
+    }
+   ]
+  },
+  {
+   "id": "home-kitchen",
+   "emoji": "🍽️",
+   "en": "Home & Kitchen",
+   "he": "בית ומטבח",
+   "aisles": [
+    {
+     "id": "foil-wrap",
+     "en": "Foil, wrap & baking paper",
+     "he": "נייר כסף, ניילון נצמד ונייר אפייה"
+    },
+    {
+     "id": "batteries-bulbs",
+     "en": "Batteries & electrical",
+     "he": "סוללות וחשמל"
+    },
+    {
+     "id": "tableware-cookware",
+     "en": "Tableware & cookware",
+     "he": "כלי שולחן ובישול"
+    },
+    {
+     "id": "candles",
+     "en": "Candles",
+     "he": "נרות"
+    },
+    {
+     "id": "home-textiles",
+     "en": "Towels, rugs & textiles",
+     "he": "מגבות, שטיחים וטקסטיל"
+    }
+   ]
+  },
+  {
+   "id": "other",
+   "emoji": "📦",
+   "en": "Other",
+   "he": "אחר",
+   "aisles": [
+    {
+     "id": "clothing",
+     "en": "Clothing & shoes",
+     "he": "ביגוד והנעלה"
+    },
+    {
+     "id": "toys-stationery",
+     "en": "Toys & stationery",
+     "he": "צעצועים וכלי כתיבה"
+    },
+    {
+     "id": "party-seasonal",
+     "en": "Party & holiday",
+     "he": "מסיבות וחגים"
+    },
+    {
+     "id": "flowers-plants",
+     "en": "Flowers & plants",
+     "he": "פרחים וצמחים"
+    },
+    {
+     "id": "other",
+     "en": "Other",
+     "he": "אחר"
+    }
+   ]
+  }
+ ]
 }
