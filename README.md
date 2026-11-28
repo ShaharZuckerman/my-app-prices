@@ -27,6 +27,13 @@ their chains' product lists.
   (supermarkets, minimarkets, greengrocers, butchers, delis), asked once a night,
   for the app's map. Also used to put branches exactly on their store.
 - `places.json`: the cities' centers found so far (not searched for again).
+- `words.json`: the word table, which aisle a word in an item's name points to,
+  learned each night from every chain's product names sorted by
+  `categories/rules.mjs` (aisles from `categories/framework.json`). `first`: what
+  a name starts with (one or two words, "גבינת שמנת"); `any`: a word anywhere in
+  it ("פרמזן"); each gives a place in `aisles` (its tab in `tabs`). A word is kept
+  when enough products have it and most are in one aisle (or one tab). To see it
+  without a whole build: `node categories/word-table.mjs` (from `out\` or `previous\`).
 - `stores.json`, `catalog.json`: the Haifa area only (`"cities"` in
   `config.json`), for the app's versions before 2026-11; can go once every phone
   has the new one.
