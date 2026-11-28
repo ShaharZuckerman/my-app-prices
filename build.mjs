@@ -9,6 +9,7 @@
 //   out/branches/<id>.json   a branch's prices, in its chain's product order (0: not sold)
 //   out/groceries.json       every grocery on OpenStreetMap, for the app's map
 //   out/places.json          the cities' centers found so far
+//   out/words.json           which aisle each word of a product name points to (categories/)
 //   out/report.json          what was found (every city seen, errors), to tune config.json
 //   out/stores.json, out/catalog.json   the Haifa area only, for the app's older versions
 //
@@ -18,6 +19,7 @@ import { XMLParser } from 'fast-xml-parser';
 import fs from 'node:fs/promises';
 import { PassThrough } from 'node:stream';
 import { gunzipSync, inflateRawSync } from 'node:zlib';
+import { writeWordTable } from './categories/word-table.mjs';
 
 const config = JSON.parse(await fs.readFile(new URL('./config.json', import.meta.url), 'utf8'));
 const OUT = new URL('./out/', import.meta.url);
@@ -1499,6 +1501,17 @@ await fs.writeFile(
     ]),
   })
 );
+// The word table (words.json): which aisle each word of a product name points to,
+// from every chain's products (categories/word-table.mjs). Last night's if it fails.
+try {
+  report.words = await writeWordTable(OUT, report.builtAt);
+  console.log('Word table:', report.words);
+} catch (error) {
+  report.words = { error: error.message };
+  console.log(`Word table: ✗ ${error.message}`);
+  const last = await fs.readFile(new URL('words.json', PREVIOUS)).catch(() => null);
+  if (last) await fs.writeFile(new URL('./words.json', OUT), last);
+}
 report.groceries = { count: osmShops.length, fresh: foundShops !== null };
 report.searchedMinutes = Math.round(searchedMs / 60_000);
 report.located = Object.fromEntries(
