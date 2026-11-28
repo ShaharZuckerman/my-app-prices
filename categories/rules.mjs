@@ -1001,6 +1001,8 @@ function frozenAisle(aisle) {
 const FoodTabs = new Set(['produce', 'bakery', 'meat-fish', 'deli', 'dairy', 'chilled', 'pantry', 'frozen']);
 
 const Marks = /['’׳"״`]/g;
+// Words after which a name tells the flavor or coating, not the product.
+const FlavorWords = /^(בטעם|בטעמי|טעם|טעמי|ציפוי|בציפוי|מצופה|מצופים|במילוי|מילוי|ברוטב|בניחוח|ניחוח)$/;
 
 /** The words of a name, without marks. */
 export function wordsOf(name) {
@@ -1026,19 +1028,9 @@ function byWord(word, name) {
  */
 export function aisleOf(rawName, weighted, tabOf) {
   const name = rawName.replace(Marks, '');
-  const words = wordsOf(rawName);
-  if (words.length === 0) return undefined;
-  if (NotProducts.has(words[0])) return null;
-  // The first known word; after a pack, brand or number ("מארז", "אסם", "12"),
-  // a few words further (its next words may be a brand or a flavor).
-  let aisle;
-  let afterSkip = false;
-  for (let i = 0; i < Math.min(words.length, 4); i++) {
-    aisle = byWord(words[i], name);
-    if (aisle !== undefined) break;
-    if (Skip.has(words[i]) || /^\d/.test(words[i])) afterSkip = true;
-    else if (!afterSkip) break;
-  }
+  const found = productWord(rawName, tabOf);
+  if (found === null) return null;
+  let aisle = found?.aisle;
   if (aisle === undefined) return undefined;
 
   // Frozen food: its frozen aisle.
@@ -1053,4 +1045,35 @@ export function aisleOf(rawName, weighted, tabOf) {
     if (aisle === 'hummus-salads') return 'olives-salads';
   }
   return aisle;
+}
+
+/**
+ * The word of a name that says what the product is: { at: its place in
+ * wordsOf(name), aisle: what its rule gives }. Undefined: no rule knows the name;
+ * null: not a product.
+ */
+export function productWord(rawName, tabOf) {
+  const name = rawName.replace(Marks, '');
+  const words = wordsOf(rawName);
+  if (words.length === 0) return undefined;
+  if (NotProducts.has(words[0])) return null;
+  // The first known word; after a pack, brand or number ("מארז", "אסם", "12"),
+  // a few words further (its next words may be a brand or a flavor).
+  // A first word no rule knows is taken as a brand too ("פילדלפיה גבינת שמנת"), but
+  // after one, what follows a flavor word is the flavor ("פאוורייד בטעם פירות"), and
+  // fruit or vegetables are nearly always a flavor ("לימונדת מנגו"), so not taken.
+  let aisle;
+  let afterSkip = false;
+  let afterBrand = false;
+  for (let i = 0; i < Math.min(words.length, 4); i++) {
+    if (afterBrand && FlavorWords.test(words[i])) return undefined;
+    aisle = byWord(words[i], name);
+    if (aisle !== undefined) {
+      if (afterBrand && (tabOf(aisle) === 'produce' || aisle === 'frozen-veg-fruit')) return undefined;
+      return { at: i, aisle };
+    }
+    if (Skip.has(words[i]) || /^\d/.test(words[i])) afterSkip = true;
+    else if (!afterSkip) afterBrand = true;
+  }
+  return undefined;
 }

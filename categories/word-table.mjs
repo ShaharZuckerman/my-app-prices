@@ -1,25 +1,25 @@
 /**
  * The word table (words.json): which aisle a word in an item's name points to,
  * learned each night from every chain's product names sorted by rules.mjs. The
- * app uses it for what's typed or said ("×¤×¨×ž×–×Ÿ" â†’ the cheese aisle), and it grows
+ * app uses it for what's typed or said ("פרמזן" → the cheese aisle), and it grows
  * with the products, without a new version of the app.
  *
  * words.json:
  *   aisles  every aisle id (framework.json's order); the tables give a place in it.
  *   tabs    each aisle's tab id, in the same order.
  *   first   what a name starts with (its first one or two words, after a pack,
- *           brand or number) â†’ aisle: "×’×‘×™× ×ª" â†’ yellow cheese, "×’×‘×™× ×ª ×©×ž× ×ª" â†’ soft
+ *           brand or number) → aisle: "גבינת" → yellow cheese, "גבינת שמנת" → soft
  *           cheese. Hebrew names start with what the product is, so this comes first.
- *   any     a word anywhere in a name â†’ aisle, when most names with it are in one
- *           aisle ("×¤×¨×ž×–×Ÿ" in "×’×‘×™× ×ª ×¤×¨×ž×–×Ÿ"): for what `first` doesn't know.
+ *   any     a word anywhere in a name → aisle, when most names with it are in one
+ *           aisle ("פרמזן" in "גבינת פרמזן"): for what `first` doesn't know.
  * A word is kept only if enough products have it and most of them are in one aisle.
  *
  * Run on its own (after a build, or with last night's files in ./previous):
- *   node categories/word-table.mjs   â†’ out/words.json, and how much it knows.
+ *   node categories/word-table.mjs   → out/words.json, and how much it knows.
  */
 import fs from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
-import { aisleOf, Skip, wordsOf } from './rules.mjs';
+import { aisleOf, productWord, wordsOf } from './rules.mjs';
 
 // How sure a word must be: at least this many products, this share in one aisle.
 const FirstMin = 3;
@@ -27,16 +27,16 @@ const FirstShare = 0.6;
 const AnyMin = 10;
 const AnyShare = 0.6;
 
-// Sizes and units ("100 ×’×¨×"): they say nothing about the product.
+// Sizes and units ("100 גרם"): they say nothing about the product.
 const Units = new Set([
-  '×’×¨×', '×’×¨', '×’×¨×ž×™×', '×§×’', '×§×™×œ×•', '×œ×™×˜×¨', '×œ×™×˜×¨×™×', '×ž×œ', '×™×—', '×™×—×™×“×•×ª', '×™×—×™', '×ž',
-  'g', 'gr', 'kg', 'ml', 'l', '×œ×™×˜', '×‘×ž×©×§×œ', '×ž×©×§×œ',
+  'גרם', 'גר', 'גרמים', 'קג', 'קילו', 'ליטר', 'ליטרים', 'מל', 'יח', 'יחידות', 'יחי', 'מ',
+  'g', 'gr', 'kg', 'ml', 'l', 'ליט', 'במשקל', 'משקל',
 ]);
 
 /** A word worth keeping: has two letters or more, and isn't a number or a size. */
 const isWord = (word) => /\p{L}.*\p{L}/u.test(word) && !/\d/.test(word) && !Units.has(word);
 
-/** Counts per aisle for a key: Map(key â†’ Map(aisle â†’ count)). */
+/** Counts per aisle for a key: Map(key → Map(aisle → count)). */
 function count(table, key, aisle) {
   let counts = table.get(key);
   if (!counts) table.set(key, (counts = new Map()));
@@ -45,7 +45,7 @@ function count(table, key, aisle) {
 
 /**
  * The keys whose products are mostly in one aisle: { key: aisle place }. If no
- * aisle has enough but one tab does ("×©× ×™×¦×œ": frozen chicken and frozen meals),
+ * aisle has enough but one tab does ("שניצל": frozen chicken and frozen meals),
  * that tab's biggest aisle.
  */
 function decided(table, min, share, place, tabOf) {
@@ -81,14 +81,14 @@ export function buildWordTable(names, framework) {
   let sorted = 0;
   for (const [name] of names) {
     // What the product is, not how it's sold: cheese is the cheese aisle whether it's
-    // packed or weighed at the counter (the app sees the counter from "200 ×’×¨×", "×¤×¨×•×¡").
+    // packed or weighed at the counter (the app sees the counter from "200 גרם", "פרוס").
     const aisle = aisleOf(name, false, tabOf);
     if (!aisle) continue;
     sorted++;
     const words = wordsOf(name).map((word) => word.toLowerCase());
-    // Its start, after packs, brands and numbers ("×ž××¨×– 4 ×™×•×’×•×¨×˜â€¦" starts with ×™×•×’×•×¨×˜).
-    let at = 0;
-    while (at < words.length - 1 && at < 3 && (Skip.has(words[at]) || !isWord(words[at]))) at++;
+    // Its start: the word that says what it is, after packs, brands and numbers
+    // ("מארז 4 יוגורט…", "פילדלפיה גבינת שמנת"). Brands go only in `any`.
+    const { at } = productWord(name, tabOf);
     if (isWord(words[at])) {
       count(first, words[at], aisle);
       if (isWord(words[at + 1] ?? '')) count(first, `${words[at]} ${words[at + 1]}`, aisle);
@@ -97,7 +97,7 @@ export function buildWordTable(names, framework) {
   }
 
   const firstTable = decided(first, FirstMin, FirstShare, place, tabOf);
-  // Two words only where they say more than the first alone ("×’×‘×™× ×ª ×©×ž× ×ª", not "×—×œ×‘ ×ª× ×•×‘×”").
+  // Two words only where they say more than the first alone ("גבינת שמנת", not "חלב תנובה").
   for (const key of Object.keys(firstTable)) {
     const [one, two] = key.split(' ');
     if (two && firstTable[one] === firstTable[key]) delete firstTable[key];
