@@ -1006,7 +1006,7 @@ function frozenAisle(aisle) {
   return 'frozen-meals';
 }
 // Food aisles (a frozen one of these is in the freezer); non-food stays put.
-const FoodTabs = new Set(['produce', 'bakery', 'meat-fish', 'deli', 'dairy', 'chilled', 'pantry', 'frozen']);
+const FoodTabs = new Set(['produce', 'bakery', 'meat-fish', 'deli-meats', 'deli-cheeses', 'dairy', 'chilled', 'pantry', 'frozen']);
 
 const Marks = /['’׳"״`]/g;
 // Words after which a name tells the flavor or coating, not the product.

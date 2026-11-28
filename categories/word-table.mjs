@@ -203,7 +203,7 @@ export async function writeWordTable(outDir, builtAt) {
 }
 
 // Run on its own: from ./out (or ./previous if there's no build here).
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const root = new URL('../', import.meta.url);
   let dir = new URL('./out/', root);
   try {

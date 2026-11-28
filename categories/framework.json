@@ -1,5 +1,5 @@
 {
- "about": "The app's own sorting of supermarket products, by where they sit in an Israeli store. Each product is sorted into one aisle (the finest level); the tabs group aisles and can be changed later without sorting again. Agreed with the app's owner 2026-11-28.",
+ "about": "The app's own sorting of supermarket products, by where they sit in an Israeli store. Each product is sorted into one aisle (the finest level); the tabs group aisles and can be changed later without sorting again. Agreed with the app's owner 2026-11-28; the deli split in two (meats, cheeses) at their request the same day.",
  "tabs": [
   {
    "id": "produce",
@@ -66,20 +66,28 @@
    ]
   },
   {
-   "id": "deli",
+   "id": "deli-meats",
+   "emoji": "🥓",
+   "en": "Deli Meats",
+   "he": "מעדניית בשרים",
+   "aisles": [
+    {
+     "id": "meat-counter",
+     "en": "Meat & smoked fish counter",
+     "he": "דלפק נקניקים ודגים מעושנים"
+    }
+   ]
+  },
+  {
+   "id": "deli-cheeses",
    "emoji": "🧀",
-   "en": "Deli Counter",
-   "he": "מעדנייה",
+   "en": "Deli Cheeses",
+   "he": "מעדניית גבינות",
    "aisles": [
     {
      "id": "cheese-counter",
      "en": "Cheese counter",
      "he": "דלפק גבינות"
-    },
-    {
-     "id": "meat-counter",
-     "en": "Meat & smoked fish counter",
-     "he": "דלפק נקניקים ודגים מעושנים"
     },
     {
      "id": "olives-salads",
