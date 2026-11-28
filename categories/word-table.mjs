@@ -23,6 +23,8 @@ import { aisleOf, productWord, wordsOf } from './rules.mjs';
 
 // How sure a word must be: at least this many products, this share in one aisle.
 const FirstMin = 3;
+// Products named just the word (and a size) that are enough to say what it means alone.
+const BareMin = 2;
 const FirstShare = 0.6;
 const AnyMin = 10;
 const AnyShare = 0.6;
@@ -36,11 +38,31 @@ const Units = new Set([
 /** A word worth keeping: has two letters or more, and isn't a number or a size. */
 const isWord = (word) => /\p{L}.*\p{L}/u.test(word) && !/\d/.test(word) && !Units.has(word);
 
-/** Counts per aisle for a key: Map(key → Map(aisle → count)). */
-function count(table, key, aisle) {
+// A product sold by weight counts this many times: one loose product (fresh
+// cucumbers, from the greengrocer's shelf) stands for what most people mean by the
+// word, against many packed ones (jars of pickled cucumbers, each its own product).
+const WeighedCounts = 5;
+
+// A Hebrew letter's form at the end of a word (מלפפונ → מלפפון).
+const Final = { 'כ': 'ך', 'מ': 'ם', 'נ': 'ן', 'פ': 'ף', 'צ': 'ץ' };
+const withFinal = (word) => word.slice(0, -1) + (Final[word.at(-1)] ?? word.at(-1));
+
+/** A Hebrew plural's possible singulars: מלפפונים → מלפפון, עגבניות → עגבניה, עגבנייה. */
+function singularsOf(word) {
+  if (word.endsWith('ים')) return [withFinal(word.slice(0, -2))];
+  if (word.endsWith('ות')) {
+    const stem = word.slice(0, -2);
+    return [`${stem}ה`, `${stem}יה`, withFinal(stem), `${stem}ת`];
+  }
+  return [];
+}
+
+/** Counts per aisle for a key: Map(key → Map(aisle → weight)), its products in `.products`. */
+function count(table, key, aisle, weight) {
   let counts = table.get(key);
-  if (!counts) table.set(key, (counts = new Map()));
-  counts.set(aisle, (counts.get(aisle) ?? 0) + 1);
+  if (!counts) table.set(key, (counts = Object.assign(new Map(), { products: 0 })));
+  counts.set(aisle, (counts.get(aisle) ?? 0) + weight);
+  counts.products++;
 }
 
 /**
@@ -57,7 +79,7 @@ function decided(table, min, share, place, tabOf) {
       total += n;
       byTab.set(tabOf(aisle), (byTab.get(tabOf(aisle)) ?? 0) + n);
     }
-    if (total < min) continue;
+    if (counts.products < min) continue;
     const [tab, inTab] = [...byTab].sort((a, b) => b[1] - a[1])[0];
     if (inTab / total < share) continue;
     const best = [...counts].filter(([aisle]) => tabOf(aisle) === tab).sort((a, b) => b[1] - a[1])[0];
@@ -76,10 +98,13 @@ export function buildWordTable(names, framework) {
   const place = new Map(aisles.map(([id], i) => [id, i]));
   const tabOf = (aisle) => tabOfAisle.get(aisle);
 
-  const first = new Map();
+  const pairs = new Map();
   const any = new Map();
+  // Each product's start: [first word, first two words, aisle, weight].
+  const starts = [];
   let sorted = 0;
-  for (const [name] of names) {
+  for (const [name, weighted] of names) {
+    const weight = weighted ? WeighedCounts : 1;
     // What the product is, not how it's sold: cheese is the cheese aisle whether it's
     // packed or weighed at the counter (the app sees the counter from "200 גרם", "פרוס").
     const aisle = aisleOf(name, false, tabOf);
@@ -90,17 +115,43 @@ export function buildWordTable(names, framework) {
     // ("מארז 4 יוגורט…", "פילדלפיה גבינת שמנת"). Brands go only in `any`.
     const { at } = productWord(name, tabOf);
     if (isWord(words[at])) {
-      count(first, words[at], aisle);
-      if (isWord(words[at + 1] ?? '')) count(first, `${words[at]} ${words[at + 1]}`, aisle);
+      const pair = isWord(words[at + 1] ?? '') ? `${words[at]} ${words[at + 1]}` : null;
+      if (pair) count(pairs, pair, aisle, weight);
+      const bare = !words.slice(at + 1).some(isWord);
+      starts.push([words[at], pair, aisle, weight, bare]);
     }
-    for (const word of new Set(words.filter(isWord))) count(any, word, aisle);
+    for (const word of new Set(words.filter(isWord))) count(any, word, aisle, weight);
   }
 
-  const firstTable = decided(first, FirstMin, FirstShare, place, tabOf);
+  // Two words first ("מלפפונים חמוצים", "גבינת שמנת"). Then one word: what a person
+  // means by the word alone. Best told by the products named just that (and a size:
+  // the loose "מלפפון" on the vegetable shelf); else by the products two words don't
+  // already explain (the pickled kinds counted apart); when too few are left, all.
+  const pairTable = decided(pairs, FirstMin, FirstShare, place, tabOf);
+  const ones = new Map();
+  const allOnes = new Map();
+  const bareOnes = new Map();
+  for (const [one, pair, aisle, weight, bare] of starts) {
+    count(allOnes, one, aisle, weight);
+    if (!(pair in pairTable)) count(ones, one, aisle, weight);
+    if (bare) count(bareOnes, one, aisle, weight);
+  }
+  for (const [one, counts] of allOnes) {
+    if ((ones.get(one)?.products ?? 0) < FirstMin) ones.set(one, counts);
+  }
+  const bareTable = decided(bareOnes, BareMin, FirstShare, place, tabOf);
+  const oneTable = decided(ones, FirstMin, FirstShare, place, tabOf);
+  // A plural with no product named just by it means what its singular does: the loose
+  // one is named in the singular ("מלפפון"), the jars in the plural ("מלפפונים במלח").
+  for (const one of Object.keys(oneTable)) {
+    if (one in bareTable) continue;
+    const singular = singularsOf(one).find((each) => each in bareTable);
+    if (singular) oneTable[one] = bareTable[singular];
+  }
+  const firstTable = { ...oneTable, ...bareTable, ...pairTable };
   // Two words only where they say more than the first alone ("גבינת שמנת", not "חלב תנובה").
-  for (const key of Object.keys(firstTable)) {
-    const [one, two] = key.split(' ');
-    if (two && firstTable[one] === firstTable[key]) delete firstTable[key];
+  for (const key of Object.keys(pairTable)) {
+    if (firstTable[key.split(' ')[0]] === firstTable[key]) delete firstTable[key];
   }
   const anyTable = decided(any, AnyMin, AnyShare, place, tabOf);
   // A word `first` already decides the same way isn't needed twice.
